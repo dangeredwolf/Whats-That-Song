@@ -1,0 +1,3 @@
+shazamio
+discord
+aiohttp
