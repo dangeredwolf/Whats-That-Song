@@ -83,7 +83,6 @@ async def generate_embed(match):
 
     serialized = Serialize.full_track(match)
 
-    print(serialized)
     print("Generating embed...")
 
     # i hate dicts and their .get() chaining hell
@@ -92,11 +91,8 @@ async def generate_embed(match):
                           description=track.get("subtitle"),
                           color=discord.Color.blue())
     
-    print(track.get("sections")[0])
-
     if track.get("sections") is not None and track.get("sections")[0] is not None and track.get("sections")[0].get("metadata") is not None:
         metadata = track.get("sections")[0].get("metadata")
-        print(metadata)
         # Loop over metadata list and add each property to the embed
         for prop in metadata:
             embed.add_field(name=prop.get("title"), value=prop.get("text"), inline=True)
@@ -141,6 +137,8 @@ client.activity = discord.Activity(type=discord.ActivityType.listening, name="yo
 
 async def handle_message(message: discord.Message, interaction: discord.Interaction = None):
     url = None
+
+    print("Song request from guild " + str(message.guild.name))
 
     for embed in message.embeds:
         if embed.video is not None and embed.video.url is not None:
