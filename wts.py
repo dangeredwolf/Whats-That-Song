@@ -17,10 +17,10 @@ for file in os.listdir("./tmp"):
 
 random_messages = [
     "I found it!",
-    "This might be the song you're looking for",
-    "I hope this helps",
-    "Hey, I love this song too",
-    "I like your taste",
+    "This might be the song you're looking for.",
+    "I hope this helps.",
+    "Hey, I love this song too.",
+    "I like your taste.",
     "I was wondering about this song too."
 ]
 
