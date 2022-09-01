@@ -13,4 +13,8 @@ Written in Discord.py ~~because I like torturing myself~~ because ShazamIO exist
 4. Run `wts.py`
 5. Profit
 
+## Notes
+
 This bot generally does not use the message content intent. However, [due to a Discord API bug](https://github.com/discord/discord-api-docs/issues/5406), the bot will break deferred media from embeds without the message content intent. Media already cached by, or already hosted by, Discord is not affected. Message content intent will be removed from production once Discord fixes their API bug.
+
+At the moment, we do not support links from sites that don't embed video files, like YouTube and TikTok. If you want to use them with What's That Song?, download them using something like [Cobalt](https://co.wukko.me/), then attach the media link or reupload it to Discord.
