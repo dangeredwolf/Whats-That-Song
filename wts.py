@@ -78,7 +78,7 @@ async def process_video(self, url):
 
 async def generate_embed(match):
     if match is None or match.get("track") is None:
-        return discord.Embed(title="No matches", description="Sorry, we had no song matches for that video or audio file", color=discord.Color.blue())
+        return None
     
     serialized = Serialize.full_track(match)
 
@@ -99,7 +99,7 @@ async def generate_embed(match):
 
 async def generate_view(match):
     if match is None or match.get("track") is None:
-        return []
+        return None
     track = match.get("track")
 
     serialized = Serialize.full_track(match)
@@ -167,7 +167,13 @@ async def _handle_message(url: str, message: discord.Message, interaction: disco
         songinfo = await process_video(client, url)
         print("Song info acquired")
         random_message = random.choice(random_messages)
-        
+        embed = await generate_embed(songinfo)
+        if embed is None:
+            if interaction is not None:
+                await interaction.followup.send(embed=discord.Embed(title="No matches", description="Sorry, we had no song matches for that video or audio file", color=discord.Color.orange()), ephemeral=True)
+            else:
+                await message.channel.send(reference=message, embed=discord.Embed(title="No matches", description="Sorry, we had no song matches for that video or audio file", color=discord.Color.orange()))
+            return
         if interaction is not None:
             await interaction.followup.send(random_message, embed=await generate_embed(songinfo), view=await generate_view(songinfo), ephemeral=True)
         else:
