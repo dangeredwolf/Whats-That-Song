@@ -80,7 +80,7 @@ async def process_video(self, url):
 async def generate_embed(match):
     if match is None or match.get("track") is None:
         return None
-    
+
     serialized = Serialize.full_track(match)
 
     print(serialized)
@@ -91,6 +91,15 @@ async def generate_embed(match):
     embed = discord.Embed(title=track.get("title"),
                           description=track.get("subtitle"),
                           color=discord.Color.blue())
+    
+    print(track.get("sections")[0])
+
+    if track.get("sections") is not None and track.get("sections")[0] is not None and track.get("sections")[0].get("metadata") is not None:
+        metadata = track.get("sections")[0].get("metadata")
+        print(metadata)
+        # Loop over metadata list and add each property to the embed
+        for prop in metadata:
+            embed.add_field(name=prop.get("title"), value=prop.get("text"), inline=True)
 
     if (track.get("images")):
         embed.set_thumbnail(url= track.get("images").get("coverarthq"))
@@ -101,7 +110,6 @@ async def generate_embed(match):
 async def generate_view(match):
     if match is None or match.get("track") is None:
         return None
-    track = match.get("track")
 
     serialized = Serialize.full_track(match)
 
