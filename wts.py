@@ -78,7 +78,7 @@ async def process_video(self, url):
 
 async def generate_embed(match):
     if match is None or match.get("track") is None:
-        return discord.Embed(title="No matches", description="Sorry, we had no song matches for that video", color=discord.Color.blue())
+        return discord.Embed(title="No matches", description="Sorry, we had no song matches for that video or audio file", color=discord.Color.blue())
     
     serialized = Serialize.full_track(match)
 
@@ -199,8 +199,8 @@ async def on_message_edit(before_message: discord.Message, message: discord.Mess
         print("Embeds count after " + str(len(message.embeds)))
         if message.id in pending_media and len(message.embeds) > 0:
             print("Media was pending and has now arrived")
-            await handle_message(message)
             del pending_media[message.id]
+            await handle_message(message)
 
 @client.event
 async def on_ready():
