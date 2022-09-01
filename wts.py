@@ -33,7 +33,6 @@ shazam = Shazam()
 async def process_video(self, url):
     randomname = str(random.randint(0, 2147483647))
     randomoutput = str(random.randint(0, 2147483647))
-    fileextension = url.split(".")[-1]
 
     print(f"Downloading {url}")
     async with aiohttp.ClientSession() as session:
