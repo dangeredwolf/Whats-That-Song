@@ -122,7 +122,8 @@ class Bot(discord.Client):
 
 intents = discord.Intents.default()
 intents.messages = True
-# Message content required when uncached embeds are updated. This is a Discord API bug I will be filing soon.
+# Message content required when uncached embeds are updated. This is a Discord API bug.
+# https://github.com/discord/discord-api-docs/issues/5406
 intents.message_content = True
 
 client = Bot(intents=intents)
