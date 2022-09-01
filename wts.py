@@ -19,7 +19,9 @@ random_messages = [
     "I found it!",
     "This might be the song you're looking for",
     "I hope this helps",
-    "Hey, I love this song too"
+    "Hey, I love this song too",
+    "I like your taste",
+    "I was wondering about this song too."
 ]
 
 # Dict of pending media
@@ -188,25 +190,27 @@ async def _handle_message(url: str, message: discord.Message, interaction: disco
 
 @client.event
 async def on_message(message: discord.Message):
-    if f"<@{client.user.id}>" in message.content:
-        print("PING")
-        await handle_message(message)
+    if f"<@{client.user.id}>" in message.content or message.guild is None:
+        if message.author.id != client.user.id:
+            print("Let's go process this message")
+            await handle_message(message)
 
-@client.event
-async def on_raw_message_edit(payload: discord.RawMessageUpdateEvent):
-    print("on_raw_message_edit payload.data")
-    print(payload.data)
+# @client.event
+# async def on_raw_message_edit(payload: discord.RawMessageUpdateEvent):
+#     print("on_raw_message_edit payload.data")
+#     print(payload.data)
 
 @client.event
 async def on_message_edit(before_message: discord.Message, message: discord.Message):
-    if f"<@{client.user.id}>" in message.content:
-        print("Message containing ping edited")
-        print("Embeds count before " + str(len(before_message.embeds)))
-        print("Embeds count after " + str(len(message.embeds)))
-        if message.id in pending_media and len(message.embeds) > 0:
-            print("Media was pending and has now arrived")
-            del pending_media[message.id]
-            await handle_message(message)
+    if f"<@{client.user.id}>" in message.content or message.guild is None:
+        if message.author.id != client.user.id:
+            print("Message containing ping edited")
+            print("Embeds count before " + str(len(before_message.embeds)))
+            print("Embeds count after " + str(len(message.embeds)))
+            if message.id in pending_media and len(message.embeds) > 0:
+                print("Media was pending and has now arrived")
+                del pending_media[message.id]
+                await handle_message(message)
 
 @client.event
 async def on_ready():
@@ -218,7 +222,7 @@ async def on_resumed():
 
 @client.tree.command()
 async def help(interaction: discord.Interaction):
-    await interaction.response.send_message(f'There are two ways to use What\'s This Song?\n\n1. Tag me in a message containing a video, audio file, or video embed. My reply will be public.\n2. Right click on an existing message with a video, audio file, or video embed and select **Apps > What\'s This Song?**. I will reply privately to you.', ephemeral=True)
+    await interaction.response.send_message(f'There are two ways to use *What\'s That Song?*\n\n1. Tag me in a message containing a video, audio file, or video embed. My reply will be public.\n2. Right click on an existing message with a video, audio file, or video embed and select **Apps > What\'s That Song?**. I will reply privately to you.', ephemeral=True)
 
 @client.tree.context_menu(name="What's That Song?")
 async def whatsong(interaction: discord.Interaction, message: discord.Message):
