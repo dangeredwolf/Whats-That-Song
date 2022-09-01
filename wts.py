@@ -124,6 +124,7 @@ intents = discord.Intents.default()
 intents.messages = True
 # Message content required when uncached embeds are updated. This is a Discord API bug.
 # https://github.com/discord/discord-api-docs/issues/5406
+# We'll remove message content requirement when the bug is fixed, as we don't need message content normally.
 intents.message_content = True
 
 client = Bot(intents=intents)
@@ -181,8 +182,6 @@ async def _handle_message(url: str, message: discord.Message, interaction: disco
 
 @client.event
 async def on_message(message: discord.Message):
-    print("MESSAGE_CREATE")
-    print(message.content)
     if f"<@{client.user.id}>" in message.content:
         print("PING")
         await handle_message(message)
@@ -194,8 +193,6 @@ async def on_raw_message_edit(payload: discord.RawMessageUpdateEvent):
 
 @client.event
 async def on_message_edit(before_message: discord.Message, message: discord.Message):
-    print("MESSAGE_UPDATE")
-    print(message.content)
     if f"<@{client.user.id}>" in message.content:
         print("Message containing ping edited")
         print("Embeds count before " + str(len(before_message.embeds)))
