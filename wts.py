@@ -219,9 +219,9 @@ async def handle_message(message: discord.Message, interaction: discord.Interact
         if message.id in pending_media:
             del pending_media[message.id]
             if interaction is not None:
-                await interaction.followup.send(embed=discord.Embed(title="Media not found", description="We couldn't find any media in the message you requested\n\nNote: We're working on adding support for external media that don't embed as native videos, like TikTok and YouTube embeds, in the future, but it is not implemented yet. Thanks for your patience!", color=discord.Color.red()), ephemeral=True)
+                await interaction.followup.send(embed=discord.Embed(title="Media not found", description="We couldn't find any media in the message you requested", color=discord.Color.red()), ephemeral=True)
             else:
-                await message.channel.send(reference=message, embed=discord.Embed(title="Media not found", description="We couldn't find any media in the message you requested\n\nNote: We're working on adding support for external media that don't embed as native videos, like TikTok and YouTube embeds, in the future, but it is not implemented yet. Thanks for your patience!", color=discord.Color.red()))
+                await message.channel.send(reference=message, embed=discord.Embed(title="Media not found", description="We couldn't find any media in the message you requested", color=discord.Color.red()))
 
 async def _handle_message(url: str, message: discord.Message, interaction: discord.Interaction = None, ytdl: bool = False):
     songinfo = None
@@ -246,9 +246,9 @@ async def _handle_message(url: str, message: discord.Message, interaction: disco
     except Exception as e:
         print(e)
         if interaction is not None:
-            await interaction.followup.send(embed=discord.Embed(title="Error", description="An error occurred while processing the media you sent\n\nNote: We're working on adding support for external media that don't embed as native videos, like TikTok and YouTube embeds, in the future, but it is not implemented yet. Thanks for your patience!", color=discord.Color.red()), ephemeral=True)
+            await interaction.followup.send(embed=discord.Embed(title="Error", description="An error occurred while processing the media you sent\n\nThis may be a temporary issue downloading the media, please try again in a little while, or report this as a bug.", color=discord.Color.red()), ephemeral=True)
         else:
-            await message.channel.send(reference=message, embed=discord.Embed(title="Error", description="An error occurred while processing the media you sent\n\nNote: We're working on adding support for external media that don't embed as native videos, like TikTok and YouTube embeds, in the future, but it is not implemented yet. Thanks for your patience!", color=discord.Color.red()))
+            await message.channel.send(reference=message, embed=discord.Embed(title="Error", description="An error occurred while processing the media you sent\n\nThis may be a temporary issue downloading the media, please try again in a little while, or report this as a bug.", color=discord.Color.red()))
 
 
 @client.event
