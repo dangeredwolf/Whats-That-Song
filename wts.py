@@ -1,7 +1,6 @@
 import asyncio
 import os
 import re
-from tkinter import E
 import aiohttp
 import random
 import discord
