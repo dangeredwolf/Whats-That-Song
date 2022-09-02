@@ -4,6 +4,8 @@ import aiohttp
 import random
 import discord
 import mimetypes
+import yt_dlp as yt
+
 from discord import app_commands
 from shazamio import Shazam, Serialize
 
@@ -29,6 +31,7 @@ pending_media = {}
 
 mimetypes.init()
 shazam = Shazam()
+ydl = yt.YoutubeDL({ "format" : "bestaudio/best", "paths": "./tmp" })
 
 async def process_video(self, url):
     randomname = str(random.randint(0, 2147483647))
