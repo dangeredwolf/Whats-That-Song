@@ -1,5 +1,7 @@
 import asyncio
 import os
+import re
+from tkinter import E
 import aiohttp
 import random
 import discord
@@ -31,13 +33,48 @@ pending_media = {}
 
 mimetypes.init()
 shazam = Shazam()
-ydl = yt.YoutubeDL({ "format" : "bestaudio/best", "paths": "./tmp" })
+ydl = yt.YoutubeDL({ "format" : "worstaudio/worst", "outtmpl": "%(id)s.%(ext)s", "postprocessors": [{ "key": "FFmpegExtractAudio", "preferredcodec": "aac", "nopostoverwrites": True }] })
+
+blacklist_ytdl_domains = [
+    "fxtwitter.com",
+    "vxtwitter.com",
+    "twxtter.com",
+    "twitter64.com"
+]
+
+blacklist_direct_domains = [
+    "youtube.com",
+    "youtu.be",
+    "twitter.com"
+]
+
+async def process_ytdl(url):
+    print(f"Processing {url} with ytdl")
+    filename = None
+    try:
+        info = ydl.extract_info(url)
+        if info.get("requested_downloads") is not None and info.get("requested_downloads")[0] is not None:
+            download = info.get("requested_downloads")[0]
+            filepath = download.get("filepath")
+            print(f"Requested download: {download}")
+            print(f"File path: {filepath}")
+            out = await shazam.recognize_song(filepath)
+            os.remove(filepath)
+            return out
+    except Exception as e:
+        print(e)
+        try:
+            os.remove(filename)
+        except:
+            pass
+        raise e
+
 
 async def process_video(self, url):
+    print(f"Processing {url} with direct video")
     randomname = str(random.randint(0, 2147483647))
     randomoutput = str(random.randint(0, 2147483647))
 
-    print(f"Downloading {url}")
     async with aiohttp.ClientSession() as session:
         async with session.get(url) as resp:
             filename = "./tmp/" + randomname
@@ -55,16 +92,7 @@ async def process_video(self, url):
                 os.remove(filename)
                 print(f"Finding music in {url}")
                 out = await shazam.recognize_song(audiofilename)
-                serialized = Serialize.full_track(out)
-
-                print("out", out)
-                print("serialized", serialized)
-
                 print(f"Music lookup finished for {url}")
-                if len(serialized.matches) > 0:
-                    print(f"Found music in {url}")
-                else:
-                    print(f"No music found in {url}")
                 os.remove(audiofilename)
                 # shazamio's serializer is useless and returns None for stuff like album art for no reason, so it's unusable
                 return out
@@ -72,12 +100,12 @@ async def process_video(self, url):
                 print(e)
                 try:
                     os.remove(filename)
-                except Exception as fe:
-                    print(f)
+                except:
+                    pass
                 try:
                     os.remove(audiofilename)
-                except Exception as f:
-                    print(f)
+                except:
+                    pass
                 raise e
 
 async def generate_embed(match):
@@ -146,13 +174,36 @@ async def handle_message(message: discord.Message, interaction: discord.Interact
 
     for embed in message.embeds:
         if embed.video is not None and embed.video.url is not None:
-            url = embed.video.url
+            # Make sure the domain is not a blacklisted domain
+            if not any(domain in embed.video.url for domain in blacklist_direct_domains):
+                url = embed.video.url
+                break
+            else:
+                print("URL contains domain not eligible for direct download: " + embed.video.url)
     for attachment in message.attachments:
         # Check if attachment is any video or audio file
         mimetype = mimetypes.guess_type(attachment.filename)[0]
         if mimetype is not None and (mimetype.startswith("video/") or mimetype.startswith("audio/")):
             print("Found suitable media")
             url = attachment.url
+            break
+    if url is None:
+        print("Checking URLs for YouTube-DL-able URLs")
+        # Check if message contains a link, then extract the URL
+        for match in re.finditer(r"(?P<url>https?://[^\s]+)", message.content):
+            url = match.group("url")
+            # Make sure the domain is not a blacklisted domain
+            if not any(domain in url for domain in blacklist_ytdl_domains):
+                print("Using ytdl engine")
+                if interaction is None:
+                    async with message.channel.typing():
+                        await _handle_message(url, message, interaction, True)
+                else:
+                    await _handle_message(url, message, interaction, True)
+                return
+            else:
+                print("URL contains domain not eligible for ytdl: " + url)
+
     if url is not None:
         # Show that bot is typing
         print("Downloading video...")
@@ -173,9 +224,13 @@ async def handle_message(message: discord.Message, interaction: discord.Interact
             else:
                 await message.channel.send(reference=message, embed=discord.Embed(title="Media not found", description="We couldn't find any media in the message you requested\n\nNote: We're working on adding support for external media that don't embed as native videos, like TikTok and YouTube embeds, in the future, but it is not implemented yet. Thanks for your patience!", color=discord.Color.red()))
 
-async def _handle_message(url: str, message: discord.Message, interaction: discord.Interaction = None):
+async def _handle_message(url: str, message: discord.Message, interaction: discord.Interaction = None, ytdl: bool = False):
+    songinfo = None
     try:
-        songinfo = await process_video(client, url)
+        if ytdl:
+            songinfo = await process_ytdl(url)
+        else:
+            songinfo = await process_video(client, url)
         print("Song info acquired")
         random_message = random.choice(random_messages)
         embed = await generate_embed(songinfo)
