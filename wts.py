@@ -141,7 +141,8 @@ client.activity = discord.Activity(type=discord.ActivityType.listening, name="yo
 async def handle_message(message: discord.Message, interaction: discord.Interaction = None):
     url = None
 
-    print("Song request from guild " + str(message.guild.name))
+    if message.guild is not None:
+       print("Song request from guild " + str(message.guild.name))
 
     for embed in message.embeds:
         if embed.video is not None and embed.video.url is not None:
