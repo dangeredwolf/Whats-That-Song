@@ -76,6 +76,7 @@ async def process_video(self, url):
 
     async with aiohttp.ClientSession() as session:
         async with session.get(url) as resp:
+            print(f"Response status code: {str(resp.status)}")
             filename = "./tmp/" + randomname
             audiofilename = "./tmp/" + randomoutput + ".aac"
             with open(filename, 'wb') as f:
