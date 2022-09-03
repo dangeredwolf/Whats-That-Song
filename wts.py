@@ -83,7 +83,7 @@ async def process_video(self, url):
     randomoutput = str(random.randint(0, 2147483647))
 
     async with aiohttp.ClientSession() as session:
-        async with session.get(url) as resp:
+        async with session.get("https://media-proxy.dangeredwolf.com/" + url) as resp:
             print(f"Response status code: {str(resp.status)}")
             filename = "./tmp/" + randomname
             audiofilename = "./tmp/" + randomoutput + ".aac"
