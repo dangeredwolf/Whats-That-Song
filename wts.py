@@ -1,4 +1,5 @@
 import asyncio
+import json
 import os
 import re
 import aiohttp
@@ -32,8 +33,18 @@ pending_media = {}
 
 mimetypes.init()
 shazam = Shazam()
+
+def ytdl_filter(info):
+    # print json conversion of info
+    if (info.get("is_live")):
+        return "WTS cannot process currently live streams"
+    if (info.get("duration") > 1800): # 30 minutes
+        return "WTS cannot process videos longer than 30 minutes"
+    
+    return None
+
 # Create YouTube-Dl but disallow live streams
-ytdl = yt.YoutubeDL({ "format" : "worstaudio/worst", "outtmpl": "%(id)s.%(ext)s", "postprocessors": [{ "key": "FFmpegExtractAudio", "preferredcodec": "aac", "nopostoverwrites": True }], "noplaylist": True, "match_filter": yt.utils.match_filter_func("!is_live") })
+ytdl = yt.YoutubeDL({ "format" : "worstaudio/worst", "outtmpl": "tmp/%(id)s.%(ext)s", "postprocessors": [{ "key": "FFmpegExtractAudio", "preferredcodec": "aac", "nopostoverwrites": True }], "noplaylist": True, "match_filter": ytdl_filter })
 
 blacklist_ytdl_domains = [
     "fxtwitter.com",
