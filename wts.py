@@ -103,7 +103,7 @@ async def process_ytdl(url):
         raise e
 
 
-async def process_video(self, url):
+async def process_video(url):
     print(f"Processing {url} with direct video")
     randomname = str(random.randint(0, 2147483647))
     randomoutput = str(random.randint(0, 2147483647))
