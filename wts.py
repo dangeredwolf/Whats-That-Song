@@ -109,7 +109,7 @@ async def process_video(self, url):
     randomoutput = str(random.randint(0, 2147483647))
 
     async with aiohttp.ClientSession() as session:
-        async with session.get(url) as resp:
+        async with session.get("https://media-proxy.dangeredwolf.com/" + url) as resp:
             print(f"Response status code: {str(resp.status)}")
             filename = "./tmp/" + randomname
             audiofilename = "./tmp/" + randomoutput + ".aac"
@@ -291,9 +291,9 @@ async def _handle_message(url: str, message: discord.Message, interaction: disco
     except Exception as e:
         print(e)
         if interaction is not None:
-            await interaction.followup.send(embed=discord.Embed(title="Error", description="An error occurred while processing the media you sent\n\nThis may be a temporary issue downloading the media, please try again in a little while, or report this as a bug.", color=discord.Color.red()), ephemeral=True)
+            await interaction.followup.send(embed=discord.Embed(title="Error", description="An error occurred while processing the media you sent\n\nThis may be a temporary issue downloading the media, please try again in a little while, or report this as a bug.\n\n**Temporary service warning:**\nTwitter downloads have a higher than usual failure rate due to Twitter request failures beyond our control. We're looking to work around these issues.", color=discord.Color.red()), ephemeral=True)
         else:
-            await message.channel.send(reference=message, embed=discord.Embed(title="Error", description="An error occurred while processing the media you sent\n\nThis may be a temporary issue downloading the media, please try again in a little while, or report this as a bug.", color=discord.Color.red()))
+            await message.channel.send(reference=message, embed=discord.Embed(title="Error", description="An error occurred while processing the media you sent\n\nThis may be a temporary issue downloading the media, please try again in a little while, or report this as a bug.\n\n**Temporary service warning:**\nTwitter downloads have a higher than usual failure rate due to Twitter request failures beyond our control. We're looking to work around these issues.", color=discord.Color.red()))
 
 
 @client.event
