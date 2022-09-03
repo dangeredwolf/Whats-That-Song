@@ -55,6 +55,32 @@ blacklist_direct_domains = [
     "twitter.com"
 ]
 
+async def process_twitter(url):
+    print(f"Processing {url} with twitter")
+    # Extract Tweet ID from Twitter URL
+    tweet_id = re.search(r"status\/(\d+)", url).group(1)
+    # Get Tweet JSON
+    async with aiohttp.ClientSession() as session:
+        async with session.get(f"https://api.fxtwitter.com/status/{tweet_id}") as resp:
+            data = await resp.json()
+            tweet = data.get("tweet")
+            if tweet is None:
+                return None
+            media = tweet.get("media")
+            if media is None:
+                return None
+            videos = media.get("videos")
+            if videos is None:
+                return None
+            video = videos[0]
+            if video is None:
+                return None
+            video_url = video.get("url")
+            print("video_url", video_url)
+            if video_url is None:
+                return None
+            return await process_video(video_url)
+
 async def process_ytdl(url):
     print(f"Processing {url} with ytdl")
     filename = None
@@ -77,13 +103,14 @@ async def process_ytdl(url):
         raise e
 
 
-async def process_video(self, url):
+async def process_video(url):
     print(f"Processing {url} with direct video")
     randomname = str(random.randint(0, 2147483647))
     randomoutput = str(random.randint(0, 2147483647))
 
     async with aiohttp.ClientSession() as session:
-        async with session.get("https://media-proxy.dangeredwolf.com/" + url) as resp:
+        # TODO: use media-proxy.dangeredwolf.com for non-Discord URLs
+        async with session.get(url) as resp:
             print(f"Response status code: {str(resp.status)}")
             filename = "./tmp/" + randomname
             audiofilename = "./tmp/" + randomoutput + ".aac"
@@ -201,6 +228,14 @@ async def handle_message(message: discord.Message, interaction: discord.Interact
         for match in re.finditer(r"(?P<url>https?://[^\s]+)", message.content):
             url = match.group("url")
             # Make sure the domain is not a blacklisted domain
+            if any(domain in url for domain in twitter_domains):
+                print("Using twitter engine")
+                if interaction is None:
+                    async with message.channel.typing():
+                        await _handle_message(url, message, interaction, False, True)
+                else:
+                    await _handle_message(url, message, interaction, False, True)
+                return
             if not any(domain in url for domain in blacklist_ytdl_domains):
                 print("Using ytdl engine")
                 if interaction is None:
@@ -232,13 +267,15 @@ async def handle_message(message: discord.Message, interaction: discord.Interact
             else:
                 await message.channel.send(reference=message, embed=discord.Embed(title="Media not found", description="We couldn't find any media in the message you requested", color=discord.Color.red()))
 
-async def _handle_message(url: str, message: discord.Message, interaction: discord.Interaction = None, ytdl: bool = False):
+async def _handle_message(url: str, message: discord.Message, interaction: discord.Interaction = None, ytdl: bool = False, twitter: bool = False):
     songinfo = None
     try:
         if ytdl:
             songinfo = await process_ytdl(url)
+        elif twitter:
+            songinfo = await process_twitter(url)
         else:
-            songinfo = await process_video(client, url)
+            songinfo = await process_video(url)
         print("Song info acquired")
         random_message = random.choice(random_messages)
         embed = await generate_embed(songinfo)
@@ -255,9 +292,9 @@ async def _handle_message(url: str, message: discord.Message, interaction: disco
     except Exception as e:
         print(e)
         if interaction is not None:
-            await interaction.followup.send(embed=discord.Embed(title="Error", description="An error occurred while processing the media you sent\n\nThis may be a temporary issue downloading the media, please try again in a little while, or report this as a bug.\n\n**Temporary service warning:**\nTwitter downloads have a higher than usual failure rate due to Twitter request failures beyond our control. We're looking to work around these issues.", color=discord.Color.red()), ephemeral=True)
+            await interaction.followup.send(embed=discord.Embed(title="Error", description="An error occurred while processing the media you sent\n\nThis may be a temporary issue downloading the media, please try again in a little while, or report this as a bug.", color=discord.Color.red()), ephemeral=True)
         else:
-            await message.channel.send(reference=message, embed=discord.Embed(title="Error", description="An error occurred while processing the media you sent\n\nThis may be a temporary issue downloading the media, please try again in a little while, or report this as a bug.\n\n**Temporary service warning:**\nTwitter downloads have a higher than usual failure rate due to Twitter request failures beyond our control. We're looking to work around these issues.", color=discord.Color.red()))
+            await message.channel.send(reference=message, embed=discord.Embed(title="Error", description="An error occurred while processing the media you sent\n\nThis may be a temporary issue downloading the media, please try again in a little while, or report this as a bug.", color=discord.Color.red()))
 
 
 @client.event
