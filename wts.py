@@ -169,7 +169,7 @@ intents.messages = True
 # Message content required when uncached embeds are updated. This is a Discord API bug.
 # https://github.com/discord/discord-api-docs/issues/5406
 # We'll remove message content requirement when the bug is fixed, as we don't need message content normally.
-intents.message_content = True
+# intents.message_content = True
 
 client = Bot(intents=intents)
 client.activity = discord.Activity(type=discord.ActivityType.listening, name="your music!")
