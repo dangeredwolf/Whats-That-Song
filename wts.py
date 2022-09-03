@@ -109,7 +109,8 @@ async def process_video(url):
     randomoutput = str(random.randint(0, 2147483647))
 
     async with aiohttp.ClientSession() as session:
-        async with session.get("https://media-proxy.dangeredwolf.com/" + url) as resp:
+        # TODO: use media-proxy.dangeredwolf.com for non-Discord URLs
+        async with session.get(url) as resp:
             print(f"Response status code: {str(resp.status)}")
             filename = "./tmp/" + randomname
             audiofilename = "./tmp/" + randomoutput + ".aac"
@@ -274,7 +275,7 @@ async def _handle_message(url: str, message: discord.Message, interaction: disco
         elif twitter:
             songinfo = await process_twitter(url)
         else:
-            songinfo = await process_video(client, url)
+            songinfo = await process_video(url)
         print("Song info acquired")
         random_message = random.choice(random_messages)
         embed = await generate_embed(songinfo)
