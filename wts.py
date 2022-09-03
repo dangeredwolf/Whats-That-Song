@@ -32,7 +32,8 @@ pending_media = {}
 
 mimetypes.init()
 shazam = Shazam()
-ydl = yt.YoutubeDL({ "format" : "worstaudio/worst", "outtmpl": "%(id)s.%(ext)s", "postprocessors": [{ "key": "FFmpegExtractAudio", "preferredcodec": "aac", "nopostoverwrites": True }] })
+# Create YouTube-Dl but disallow live streams
+ytdl = yt.YoutubeDL({ "format" : "worstaudio/worst", "outtmpl": "%(id)s.%(ext)s", "postprocessors": [{ "key": "FFmpegExtractAudio", "preferredcodec": "aac", "nopostoverwrites": True }], "noplaylist": True, "match_filter": yt.utils.match_filter_func("!is_live") })
 
 blacklist_ytdl_domains = [
     "fxtwitter.com",
@@ -85,7 +86,7 @@ async def process_ytdl(url):
     print(f"Processing {url} with ytdl")
     filename = None
     try:
-        info = ydl.extract_info(url)
+        info = ytdl.extract_info(url)
         if info.get("requested_downloads") is not None and info.get("requested_downloads")[0] is not None:
             download = info.get("requested_downloads")[0]
             filepath = download.get("filepath")
