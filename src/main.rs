@@ -14,6 +14,28 @@ use tokio::time::sleep;
 extern crate reqwest;
 
 #[derive(Deserialize)]
+struct ShazamMetadata {
+    text: String,
+    title: String
+}
+
+#[derive(Deserialize)]
+struct ShazamSection {
+    metadata: Vec<ShazamMetadata>
+}
+
+#[derive(Deserialize)]
+struct ShazamProvider {
+    #[serde(rename = "type")]
+    provider_type: String
+}
+
+#[derive(Deserialize)]
+struct ShazamHub {
+    providers: Vec<ShazamProvider>
+}
+
+#[derive(Deserialize)]
 struct ShazamImages {
     background: String,
     coverart: String,
@@ -26,6 +48,7 @@ struct ShazamTrack {
     subtitle: String,
     url: String,
     images: ShazamImages,
+    sections: Vec<ShazamSection>
 }
 
 #[derive(Deserialize)]
