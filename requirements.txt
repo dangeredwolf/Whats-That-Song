@@ -2,3 +2,5 @@ shazamio
 discord
 aiohttp
 yt_dlp
+flask
+flask[async]

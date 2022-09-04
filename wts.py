@@ -1,5 +1,4 @@
 import asyncio
-import json
 import os
 import re
 import aiohttp
@@ -95,7 +94,7 @@ async def process_twitter(url):
 
 async def process_ytdl(url):
     print(f"Processing {url} with ytdl")
-    filename = None
+    filepath = None
     try:
         info = ytdl.extract_info(url)
         if info.get("requested_downloads") is not None and info.get("requested_downloads")[0] is not None:
@@ -109,7 +108,7 @@ async def process_ytdl(url):
     except Exception as e:
         print(e)
         try:
-            os.remove(filename)
+            os.remove(filepath)
         except:
             pass
         raise e
