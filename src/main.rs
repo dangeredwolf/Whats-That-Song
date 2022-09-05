@@ -21,7 +21,7 @@ struct ShazamMetadata {
 
 #[derive(Deserialize)]
 struct ShazamSection {
-    metadata: Vec<ShazamMetadata>
+    metadata: Option<Vec<ShazamMetadata>>
 }
 
 #[derive(Deserialize)]
@@ -53,8 +53,8 @@ struct ShazamTrack {
 
 #[derive(Deserialize)]
 struct ShazamResponse {
-    timestamp: u32,
-    track: ShazamTrack,
+    timestamp: Option<u64>,
+    track: Option<ShazamTrack>,
 }
 
 struct Handler;
@@ -66,9 +66,72 @@ lazy_static! {
     static ref CLIENT: reqwest::Client = reqwest::Client::new();
 }
 
+async fn fetch_direct(url: &str) -> ShazamResponse {
+    let api_server = dotenv::var("API_SERVER").unwrap();
+    let url = format!("{}/direct?url={}", api_server, url);
+    let data = match CLIENT.get(url).send().await {
+        Ok(data) => data.json::<ShazamResponse>().await.unwrap(),
+        Err(err) => {
+            panic!("API request failed: {:?}", err);
+        }
+    };
+    return data;
+}
+
+async fn fetch_twitter(url: &str) -> ShazamResponse {
+    let api_server = dotenv::var("API_SERVER").unwrap();
+    let id = url.split('/').last().unwrap();
+    let url = &format!("{}/twitter/{}", api_server, id);
+    let data = match CLIENT.get(url).send().await {
+        Ok(data) => data.json::<ShazamResponse>().await.unwrap(),
+        Err(err) => {
+            panic!("API request failed: {:?}", err);
+        }
+    };
+    return data;
+}
+
+async fn fetch_ytdl(url: &str) -> ShazamResponse {
+    let api_server = dotenv::var("API_SERVER").unwrap();
+    let url = format!("{}/ytdl?url={}", api_server, url);
+    let data = match CLIENT.get(url).send().await {
+        Ok(data) => data.json::<ShazamResponse>().await.unwrap(),
+        Err(err) => {
+            panic!("API request failed: {:?}", err);
+        }
+    };
+    return data;
+}
+
+async fn handle_response(ctx: Context, msg: &serenity::model::channel::Message, data: ShazamResponse) {
+    let track = match data.track {
+        Some(track) => track,
+        None => {
+            println!("No track found");
+            return;
+        }
+    };
+    let title = track.title;
+    let subtitle = track.subtitle;
+    let url = track.url;
+    let coverart = track.images.coverart;
+    let mut message = format!("**{}** by **{}**", title, subtitle);
+    if url != "" {
+        message = format!("{}
+
+{}", message, url);
+    }
+    if coverart != "" {
+        message = format!("{} {}", message, coverart);
+    }
+    if let Err(why) = msg.channel_id.say(&ctx.http, message).await {
+        println!("Error sending message: {:?}", why);
+    }
+}
+
 #[async_trait]
 impl EventHandler for Handler {
-    async fn message(&self, _ctx: Context, msg: serenity::model::channel::Message) {
+    async fn message(&self, ctx: Context, msg: serenity::model::channel::Message) {
         // If message is empty and it's in a guild, then return
         if msg.content.is_empty() && msg.guild_id.is_some() {
             return;
@@ -77,13 +140,19 @@ impl EventHandler for Handler {
         if msg.author.bot { return; } // Ignore pings from bots
         println!("CREATE_MESSAGE from {}", msg.author.name);
         if !msg.attachments.is_empty() {
-            println!("Attachments: {:?}", msg.attachments);
+            println!("Attachments: {:?}", &msg.attachments);
             // Iterate through attachments and find the first one with a content_type that contains "video"
-            for attachment in msg.attachments {
-                let content_type = attachment.content_type.unwrap();
+            for attachment in &msg.attachments {
+                let content_type = attachment.content_type.as_ref().unwrap();
                 if content_type.contains("video") || content_type.contains("audio") {
                     println!("Found media attachment: {}", attachment.url);
+                    // Try fetching using direct media
+                    let data = fetch_direct(&attachment.url).await;
+                    if data.track.is_some() {
+                        handle_response(ctx, &msg, data).await;
+                    }
 
+                    println!("Fetched from API!");
                     break;
                 }
             }
