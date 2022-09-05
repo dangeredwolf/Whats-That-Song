@@ -1528,6 +1528,8 @@ version = "2.0.0"
 dependencies = [
  "dotenv",
  "lazy_static",
+ "mime_guess",
+ "rand",
  "regex",
  "reqwest",
  "serde",

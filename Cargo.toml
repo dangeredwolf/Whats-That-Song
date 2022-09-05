@@ -1,6 +1,6 @@
 [package]
 name = "whats-that-song"
-authors = ["dangeredwolf"]
+authors = ["dangered wolf"]
 license = "MIT"
 version = "2.0.0"
 edition = "2021"
@@ -10,8 +10,10 @@ tokio = { version = "1", features = ["full"] }
 dotenv = "0.15.0"
 lazy_static = "1.4.0"
 regex = "1.6.0"
+rand = "0.8.5"
 reqwest = { version = "0.11.11", features = [ "json" ] }
 serde = { version = "1.0", features = [ "derive" ] }
+mime_guess = "2.0.4"
 
 [dependencies.serenity]
 version = "0.11"
@@ -25,5 +27,6 @@ features = [
     "model",
     "http",
     "utils",
-    "rustls_backend"
+    "rustls_backend",
+    "unstable_discord_api",
 ]
