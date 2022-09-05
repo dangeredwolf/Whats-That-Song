@@ -66,9 +66,9 @@ lazy_static! {
     static ref CLIENT: reqwest::Client = reqwest::Client::new();
 }
 
-async fn fetch_direct(url: &str) -> ShazamResponse {
+async fn fetch_Url(url: &str) -> ShazamResponse {
     let api_server = dotenv::var("API_SERVER").unwrap();
-    let url = format!("{}/direct?url={}", api_server, url);
+    let url = format!("{}{}", api_server, url);
     let data = match CLIENT.get(url).send().await {
         Ok(data) => data.json::<ShazamResponse>().await.unwrap(),
         Err(err) => {
@@ -76,31 +76,22 @@ async fn fetch_direct(url: &str) -> ShazamResponse {
         }
     };
     return data;
+}
+
+async fn fetch_direct(url: &str) -> ShazamResponse {
+    let url = format!("/direct?url={}", url);
+    return fetch_Url(&url).await;
 }
 
 async fn fetch_twitter(url: &str) -> ShazamResponse {
-    let api_server = dotenv::var("API_SERVER").unwrap();
     let id = url.split('/').last().unwrap();
-    let url = &format!("{}/twitter/{}", api_server, id);
-    let data = match CLIENT.get(url).send().await {
-        Ok(data) => data.json::<ShazamResponse>().await.unwrap(),
-        Err(err) => {
-            panic!("API request failed: {:?}", err);
-        }
-    };
-    return data;
+    let url = &format!("/twitter/{}", id);
+    return fetch_Url(&url).await;
 }
 
 async fn fetch_ytdl(url: &str) -> ShazamResponse {
-    let api_server = dotenv::var("API_SERVER").unwrap();
-    let url = format!("{}/ytdl?url={}", api_server, url);
-    let data = match CLIENT.get(url).send().await {
-        Ok(data) => data.json::<ShazamResponse>().await.unwrap(),
-        Err(err) => {
-            panic!("API request failed: {:?}", err);
-        }
-    };
-    return data;
+    let url = format!("/ytdl?url={}", url);
+    return fetch_Url(&url).await;
 }
 
 async fn handle_response(ctx: Context, msg: &serenity::model::channel::Message, data: ShazamResponse) {
