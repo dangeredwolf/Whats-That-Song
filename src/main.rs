@@ -89,7 +89,17 @@ async fn fetch_url(url: &str) -> ShazamResponse {
     let api_server = dotenv::var("API_SERVER").unwrap();
     let url = format!("{}{}", api_server, url);
     let data = match CLIENT.get(url).send().await {
-        Ok(data) => data.json::<ShazamResponse>().await.unwrap(),
+        Ok(data) => {
+            // Check if the status is successful
+            if data.status().is_success() {
+                data.json::<ShazamResponse>().await.unwrap()
+            } else {
+                return ShazamResponse {
+                    timestamp: None,
+                    track: None
+                }
+            }
+        },
         Err(err) => {
             panic!("API request failed: {:?}", err);
         }
@@ -137,26 +147,28 @@ async fn handle_response(ctx: Context, msg: &serenity::model::channel::Message, 
     let track = match data.track {
         Some(track) => track,
         None => {
+            let mut error_embed = serenity::builder::CreateEmbed::default();
+            error_embed.title("No matches found")
+                .description("We searched your media for a matching song, and couldn't find anything.")
+                .color(Colour::ORANGE);
             if interaction.is_some() {
                 // Send as an followup message
                 if let Interaction::ApplicationCommand(command) = interaction.unwrap() {
                     command.create_followup_message(&ctx.http, |f| {
                         f.embed(|e| {
-                            e.title("No matches found")
-                            .description("We searched your media for a matching song, and couldn't find anything.")
-                            .color(Colour::ORANGE)
+                            e.0 = error_embed.0;
+                            e
                         })
                     }).await.unwrap();
                 }
-                
+
             } else {
                 if let Err(why) = msg.channel_id.send_message(&ctx.http, |m|
-                m.embed(|e|
-                     e.title("No matches found")
-                       .description("We searched your media for a matching song, and couldn't find anything.")
-                       .color(Colour::ORANGE)
-                    )
-                .reference_message(msg)
+                    m.embed(|e| {
+                        e.0 = error_embed.0;
+                        e
+                    })
+                        .reference_message(msg)
                 ).await {
                     println!("Error sending message: {:?}", why);
                 }
@@ -169,11 +181,19 @@ async fn handle_response(ctx: Context, msg: &serenity::model::channel::Message, 
     let subtitle = track.subtitle;
     let url = track.url;
     let coverart = track.images.coverarthq;
-    
+
     // Set message to a random string from RANDOM_MESSAGES
     let message = RANDOM_MESSAGES.choose(&mut rand::thread_rng()).unwrap().to_string();
 
     // Get the metadata from the track's section 0
+
+    let mut embed = serenity::builder::CreateEmbed::default();
+    embed.title(&title)
+        .description(&subtitle)
+        .url(&url)
+        .color(Colour::BLUE)
+        .thumbnail(&coverart)
+        .footer(|f| f.text("Shazam").icon_url("https://cdn.discordapp.com/attachments/165560751363325952/1014753423045955674/84px-Shazam_icon.svg1.png"));
 
     // Send as an interaction followup if this is part of an interaction
     if interaction.is_some() {
@@ -181,35 +201,27 @@ async fn handle_response(ctx: Context, msg: &serenity::model::channel::Message, 
         if let Interaction::ApplicationCommand(command) = interaction.unwrap() {
             command.create_followup_message(&ctx.http, |f| {
                 f.content(message)
-                .embed(|e| {
-                    e.title(&title)
-                    .description(&subtitle)
-                    .url(&url)
-                    .color(Colour::BLUE)
-                    .thumbnail(&coverart)
-                    .footer(|f| f.text("Shazam").icon_url("https://cdn.discordapp.com/attachments/165560751363325952/1014753423045955674/84px-Shazam_icon.svg1.png"))
-                })
+                    .embed(|e| {
+                        e.0 = embed.0;
+                        e
+                    })
             }).await.unwrap();
         }
-        
+
     } else {
         if let Err(why) = msg.channel_id.send_message(&ctx.http, |m|
-        m.content(message)
-         .embed(|e|
-             e.title(&title)
-               .description(&subtitle)
-               .url(&url)
-               .color(Colour::BLUE)
-               .thumbnail(&coverart)
-               .footer(|f| f.text("Shazam").icon_url("https://cdn.discordapp.com/attachments/165560751363325952/1014753423045955674/84px-Shazam_icon.svg1.png"))
-            )
-        .reference_message(msg)
+            m.content(message)
+                .embed(|e| {
+                    e.0 = embed.0;
+                    e
+                })
+                .reference_message(msg)
         ).await {
             println!("Error sending message: {:?}", why);
         }
     }
-    
-    
+
+
 
 }
 
@@ -232,7 +244,7 @@ async fn check_message(ctx: Context, msg: &serenity::model::channel::Message, in
             let content_type = attachment.content_type.as_ref().unwrap();
             if content_type.contains("video") || content_type.contains("audio") {
                 println!("Found media attachment: {}", attachment.url);
-                
+
                 start_typing(&ctx, msg, &interaction).await;
                 handle_response(ctx, &msg, fetch_direct(&attachment.url).await, interaction).await;
 
@@ -251,7 +263,7 @@ async fn check_message(ctx: Context, msg: &serenity::model::channel::Message, in
             if let Some(url) = &embed.url {
                 if should_direct_download(url) {
                     println!("Found media embed: {}", url);
-                    
+
                     start_typing(&ctx, msg, &interaction).await;
                     handle_response(ctx, &msg, fetch_direct(&url).await, interaction).await;
 
@@ -259,7 +271,7 @@ async fn check_message(ctx: Context, msg: &serenity::model::channel::Message, in
                     return;
                 } else if matches_twitter_link(url) {
                     println!("Found twitter link: {}", url);
-                    
+
                     start_typing(&ctx, msg, &interaction).await;
                     handle_response(ctx, &msg, fetch_twitter(&url).await, interaction).await;
 
@@ -275,7 +287,7 @@ async fn check_message(ctx: Context, msg: &serenity::model::channel::Message, in
         let interaction = interaction.clone();
         let ctx = ctx.clone();
         println!("Content: {}", &msg.content);
-        
+
         // Match links using LINK_REGEX
         for link in LINK_REGEX.find_iter(&msg.content) {
 
@@ -296,7 +308,7 @@ async fn check_message(ctx: Context, msg: &serenity::model::channel::Message, in
                 handle_response(ctx, &msg, fetch_twitter(&url).await, interaction).await;
                 return;
             } else {
-                    
+
             }
 
         }
@@ -356,9 +368,9 @@ impl EventHandler for Handler {
                 if let Err(why) = command
                     .create_interaction_response(&ctx.http, |response| {
                         response.kind(InteractionResponseType::DeferredChannelMessageWithSource)
-                        .interaction_response_data(|message| {
-                            message.flags(MessageFlags::EPHEMERAL)
-                        })
+                            .interaction_response_data(|message| {
+                                message.flags(MessageFlags::EPHEMERAL)
+                            })
                     }).await
                 {
                     println!("Cannot respond to application command: {}", why);
@@ -378,7 +390,7 @@ impl EventHandler for Handler {
 
 #[tokio::main]
 async fn main() {
-    
+
     dotenv::dotenv().expect("Failed to load .env file!");
     let token = env::var("DISCORD_TOKEN").expect("Expected a token in the environment");
 
