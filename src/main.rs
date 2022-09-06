@@ -9,6 +9,7 @@ use mime_guess::{self, mime};
 use serde::Deserialize;
 
 use serenity::async_trait;
+use serenity::model::prelude::component::{ButtonStyle, ActionRow};
 use serenity::model::prelude::{Activity};
 use serenity::model::prelude::interaction::{MessageFlags};
 use serenity::model::application::interaction::Interaction;
@@ -35,7 +36,7 @@ struct ShazamSection {
 struct ShazamProvider {
     #[serde(rename = "type")]
     provider_type: String,
-    providername: String
+    providername: Option<String>
 }
 
 #[derive(Deserialize)]
@@ -213,11 +214,21 @@ async fn handle_response(ctx: Context, msg: &serenity::model::channel::Message, 
     for option in track.hub.options {
         providers.push(option);
     }
-    for provider in track.hub.providers {
-        if provider.providername == "applemusic" {
-            providers.push(provider);
-        }
-    }
+    // for provider in track.hub.providers {
+    //     if provider.providername == "applemusic" {
+    //         providers.push(provider);
+    //     }
+    // }
+
+    // Create new button
+    let mut button = serenity::builder::CreateButton::default();
+    button.style(ButtonStyle::Link)
+        .label("Test")
+        .url(&"https://google.com");
+
+    // Create Action Row
+    let mut action_row = serenity::builder::CreateActionRow::default();
+    
 
     // Cycle through metadata and add each as a field
     for section in track.sections {
@@ -238,6 +249,14 @@ async fn handle_response(ctx: Context, msg: &serenity::model::channel::Message, 
                     .embed(|e| {
                         e.0 = embed.0;
                         e
+                    }).components(|f| {
+                        f.create_action_row(|f| {
+                            f.create_button(|f| {
+                                f.style(ButtonStyle::Link)
+                                    .label("Test")
+                                    .url(&"https://google.com")
+                            })
+                        })
                     })
             }).await.unwrap();
         }
@@ -248,6 +267,14 @@ async fn handle_response(ctx: Context, msg: &serenity::model::channel::Message, 
                 .embed(|e| {
                     e.0 = embed.0;
                     e
+                }).components(|f| {
+                    f.create_action_row(|f| {
+                        f.create_button(|f| {
+                            f.style(ButtonStyle::Link)
+                                .label("Test")
+                                .url(&"https://google.com")
+                        })
+                    })
                 })
                 .reference_message(msg)
         ).await {
