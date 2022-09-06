@@ -34,18 +34,20 @@ struct ShazamSection {
 #[derive(Deserialize)]
 struct ShazamProvider {
     #[serde(rename = "type")]
-    provider_type: String
+    provider_type: String,
+    providername: String
 }
 
 #[derive(Deserialize)]
 struct ShazamHub {
-    providers: Vec<ShazamProvider>
+    providers: Vec<ShazamProvider>,
+    options: Vec<ShazamProvider>
 }
 
 #[derive(Deserialize)]
 struct ShazamImages {
-    background: String,
-    coverart: String,
+    // background: String,
+    // coverart: String,
     coverarthq: String
 }
 
@@ -55,7 +57,8 @@ struct ShazamTrack {
     subtitle: String,
     url: String,
     images: ShazamImages,
-    sections: Vec<ShazamSection>
+    sections: Vec<ShazamSection>,
+    hub: ShazamHub
 }
 
 #[derive(Deserialize)]
@@ -144,13 +147,23 @@ fn matches_twitter_link(url: &str) -> bool {
 }
 
 async fn handle_response(ctx: Context, msg: &serenity::model::channel::Message, data: ShazamResponse, interaction: Option<Interaction>) {
+    let mut error_embed = serenity::builder::CreateEmbed::default();
     let track = match data.track {
         Some(track) => track,
         None => {
-            let mut error_embed = serenity::builder::CreateEmbed::default();
-            error_embed.title("No matches found")
-                .description("We searched your media for a matching song, and couldn't find anything.")
-                .color(Colour::ORANGE);
+            // If timestamp exists, then reply with no matches, otherwise return an error
+            match data.timestamp {
+                Some(_) => {
+                    error_embed.title("No matches found")
+                        .description("We searched your media for a matching song, and couldn't find anything.")
+                        .color(Colour::ORANGE);
+                },
+                None => {
+                    error_embed.title("Failed to process media")
+                        .description("We tried processing the media you requested, but an error occurred somewhere along the way. Sorry about that.")
+                        .color(Colour::RED);
+                }
+            }
             if interaction.is_some() {
                 // Send as an followup message
                 if let Interaction::ApplicationCommand(command) = interaction.unwrap() {
@@ -194,6 +207,27 @@ async fn handle_response(ctx: Context, msg: &serenity::model::channel::Message, 
         .color(Colour::BLUE)
         .thumbnail(&coverart)
         .footer(|f| f.text("Shazam").icon_url("https://cdn.discordapp.com/attachments/165560751363325952/1014753423045955674/84px-Shazam_icon.svg1.png"));
+    
+    // join together track.hub.providers and track.hub.options
+    let mut providers = Vec::new();
+    for option in track.hub.options {
+        providers.push(option);
+    }
+    for provider in track.hub.providers {
+        if provider.providername == "applemusic" {
+            providers.push(provider);
+        }
+    }
+
+    // Cycle through metadata and add each as a field
+    for section in track.sections {
+        if section.metadata.is_some() {
+            let metadata = section.metadata.unwrap();
+            for item in metadata {
+                embed.field(item.title, item.text, true);
+            }
+        }
+    }
 
     // Send as an interaction followup if this is part of an interaction
     if interaction.is_some() {
@@ -308,7 +342,11 @@ async fn check_message(ctx: Context, msg: &serenity::model::channel::Message, in
                 handle_response(ctx, &msg, fetch_twitter(&url).await, interaction).await;
                 return;
             } else {
+                println!("Let's try processing link using ytdl method: {}", url);
 
+                start_typing(&ctx, msg, &interaction).await;
+                handle_response(ctx, &msg, fetch_ytdl(&url).await, interaction).await;
+                return;
             }
 
         }
