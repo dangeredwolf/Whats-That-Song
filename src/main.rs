@@ -397,8 +397,6 @@ async fn handle_response(ctx: Context, msg: &serenity::model::channel::Message, 
         }
     }
 
-
-
 }
 
 async fn start_typing(ctx: &Context, msg: &serenity::model::channel::Message, interaction: &Option<Interaction>) {
