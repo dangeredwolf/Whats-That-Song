@@ -5,6 +5,7 @@ import aiohttp
 import flask
 import yt_dlp as yt
 from shazamio import Shazam
+from urllib.parse import urlparse
 
 # Make ./tmp if it does not already exist
 if not os.path.exists("./tmp"):
@@ -22,7 +23,22 @@ def ytdl_filter(info):
         return "WTS cannot process videos longer than 30 minutes"
     
     return None
-    
+
+headers = {
+    "sec-ch-ua": '".Not/A)Brand";v="99", "Google Chrome";v="104", "Chromium";v="104"',
+    "DNT": '1',
+    "sec-ch-ua-mobile": '?0',
+    "User-Agent": 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/104.0.0.0 Safari/537.36',
+    "sec-ch-ua-platform": '"Windows"',
+    "Accept": '*/*',
+    "Sec-Fetch-Site": 'none',
+    "Sec-Fetch-Mode": 'no-cors',
+    "Accept-Encoding": 'gzip, deflate, br',
+    "Accept-Language": 'en',
+    "Cache-Control": 'no-cache',
+    "Pragma": 'no-cache',
+    "Upgrade-Insecure-Requests": '1',
+}
 mimetypes.init()
 shazam = Shazam()
 
@@ -35,7 +51,7 @@ app = flask.Flask("whatsthatsong")
 @app.route("/twitter/<tweet_id>")
 async def twitter_engine(tweet_id):
     async with aiohttp.ClientSession() as session:
-        async with session.get(f"https://api.fxtwitter.com/status/{tweet_id}") as resp:
+        async with session.get(f"https://api.fxtwitter.com/status/{tweet_id}", headers=headers) as resp:
             data = await resp.json()
             tweet = data.get("tweet")
             if tweet is None:
@@ -57,7 +73,7 @@ async def twitter_engine(tweet_id):
 
 @app.route("/ytdl")
 async def ytdl_engine():
-    url = flask.request.args.get("url")
+    url = urlparse(flask.request.args.get("url")).geturl()
     if url is None:
         return "No URL provided", 400
     print(f"Processing {url} with ytdl")
@@ -82,7 +98,7 @@ async def ytdl_engine():
 
 @app.route("/direct")
 async def direct_engine():
-    url = flask.request.args.get("url")
+    url = urlparse(flask.request.args.get("url")).geturl()
     if url is None:
         return "No URL provided", 400
     print(f"Processing {url} with direct")
@@ -95,7 +111,7 @@ async def process_video(url):
 
     async with aiohttp.ClientSession() as session:
         # TODO: use media-proxy.dangeredwolf.com for non-Discord URLs
-        async with session.get(url) as resp:
+        async with session.get(url, headers=headers) as resp:
             print(f"Response status code: {str(resp.status)}")
             filename = "./tmp/" + randomname
             audiofilename = "./tmp/" + randomoutput + ".aac"
