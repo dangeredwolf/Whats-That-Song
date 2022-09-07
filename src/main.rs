@@ -6,11 +6,12 @@ use rand::seq::SliceRandom;
 
 use dotenv;
 use mime_guess::{self, mime};
+use urlencoding::encode;
 use serde::Deserialize;
 
 use serenity::async_trait;
-use serenity::model::prelude::component::{ButtonStyle, ActionRow};
-use serenity::model::prelude::{Activity};
+use serenity::model::prelude::component::{ButtonStyle};
+use serenity::model::prelude::{Activity, ReactionType};
 use serenity::model::prelude::interaction::{MessageFlags};
 use serenity::model::application::interaction::Interaction;
 use serenity::model::application::interaction::InteractionResponseType;
@@ -20,6 +21,11 @@ use serenity::prelude::*;
 use tokio::time::sleep;
 
 extern crate reqwest;
+
+#[derive(Deserialize)]
+struct ShazamAction {
+    uri: String
+}
 
 #[derive(Deserialize)]
 struct ShazamMetadata {
@@ -36,7 +42,8 @@ struct ShazamSection {
 struct ShazamProvider {
     #[serde(rename = "type")]
     provider_type: String,
-    providername: Option<String>
+    providername: Option<String>,
+    actions: Vec<ShazamAction>
 }
 
 #[derive(Deserialize)]
@@ -68,11 +75,17 @@ struct ShazamResponse {
     track: Option<ShazamTrack>,
 }
 
+struct ShazamProviderList {
+    spotify: Option<ShazamProvider>,
+    apple: Option<ShazamProvider>,
+    deezer: Option<ShazamProvider>,
+}
+
 struct Handler;
 
 lazy_static! {
     static ref TWITTER_LINK_REGEX: Regex = Regex::new(
-            r"(?i)https?://((fx|px|vx)?twitter|twxtter|twittpr)\.com/\w{1,15}/status(es)?/\d+"
+            r"(?i)https?://((fx|px|vx)?twitter|twxtter|twittpr|twitter64)\.com/\w{1,15}/status(es)?/\d+"
         ).unwrap();
     static ref LINK_REGEX: Regex = Regex::new(
             r"(?i)https?://\S+"
@@ -112,7 +125,7 @@ async fn fetch_url(url: &str) -> ShazamResponse {
 }
 
 async fn fetch_direct(url: &str) -> ShazamResponse {
-    let url = format!("/direct?url={}", url);
+    let url = &format!("/direct?url={}", encode(url));
     return fetch_url(&url).await;
 }
 
@@ -123,7 +136,7 @@ async fn fetch_twitter(url: &str) -> ShazamResponse {
 }
 
 async fn fetch_ytdl(url: &str) -> ShazamResponse {
-    let url = format!("/ytdl?url={}", url);
+    let url = &format!("/ytdl?url={}", encode(url));
     return fetch_url(&url).await;
 }
 
@@ -209,26 +222,84 @@ async fn handle_response(ctx: Context, msg: &serenity::model::channel::Message, 
         .thumbnail(&coverart)
         .footer(|f| f.text("Shazam").icon_url("https://cdn.discordapp.com/attachments/165560751363325952/1014753423045955674/84px-Shazam_icon.svg1.png"));
     
-    // join together track.hub.providers and track.hub.options
-    let mut providers = Vec::new();
-    for option in track.hub.options {
-        providers.push(option);
+    // make new ShazamProviderList
+    let mut providers = ShazamProviderList {
+        spotify: None,
+        apple: None,
+        deezer: None,
+    };
+    for provider in track.hub.providers {
+        println!("Found provider: {}", provider.provider_type);
+        match provider.provider_type.as_str() {
+            "SPOTIFY" => {
+                providers.spotify = Some(provider);
+            },
+            "DEEZER" => {
+                providers.deezer = Some(provider);
+            },
+            _ => {}
+        }
     }
-    // for provider in track.hub.providers {
-    //     if provider.providername == "applemusic" {
-    //         providers.push(provider);
-    //     }
-    // }
+    for option in track.hub.options {
+        if option.providername.is_some() {
+            match option.providername.clone().unwrap().as_str() {
+                "applemusic" => {
+                    providers.apple = Some(option);
+                },
+                _ => {}
+            }
+        }
+    }
 
-    // Create new button
-    let mut button = serenity::builder::CreateButton::default();
-    button.style(ButtonStyle::Link)
-        .label("Test")
-        .url(&"https://google.com");
+    let mut buttons: Vec<serenity::builder::CreateButton> = Vec::new();
+    
+    // Iterate through providers and add them to the embed
+    if providers.spotify.is_some() {
+        let provider = providers.spotify.unwrap();
+        let url = provider.actions[0].uri.clone().replace("spotify:search:", "https://open.spotify.com/search/");
+        let mut button = serenity::builder::CreateButton::default();
+        let emoji = ReactionType::try_from("<:Spotify:1014768475593506836>").unwrap();
+
+        button.label("Spotify")
+            .style(ButtonStyle::Link)
+            .url(&url)
+            .emoji(emoji);
+        buttons.push(button);
+    }
+
+    if providers.apple.is_some() {
+        let provider = providers.apple.unwrap();
+        let url = provider.actions[0].uri.clone();
+        let mut button = serenity::builder::CreateButton::default();
+        let emoji = ReactionType::try_from("<:Apple Music:1014769073277640765>").unwrap();
+
+        button.label("Apple Music")
+            .style(ButtonStyle::Link)
+            .url(&url)
+            .emoji(emoji);
+        buttons.push(button);
+    }
+
+    if providers.deezer.is_some() {
+        // Shazam's Deezer links don't work in the web client, so we need to generate our own based on track title and artist name
+        let query = encode(&format!("{} {}", title, subtitle)).to_string();
+        let url = format!("https://www.deezer.com/search/{}", query);
+        let mut button = serenity::builder::CreateButton::default();
+        let emoji = ReactionType::try_from("<:Deezer:1016912951355125812>").unwrap();
+
+        button.label("Deezer")
+            .style(ButtonStyle::Link)
+            .url(&url)
+            .emoji(emoji);
+        buttons.push(button);
+    }
 
     // Create Action Row
     let mut action_row = serenity::builder::CreateActionRow::default();
-    
+    // Put buttons into action row
+    for button in buttons {
+        action_row.add_button(button);
+    }
 
     // Cycle through metadata and add each as a field
     for section in track.sections {
@@ -250,12 +321,9 @@ async fn handle_response(ctx: Context, msg: &serenity::model::channel::Message, 
                         e.0 = embed.0;
                         e
                     }).components(|f| {
-                        f.create_action_row(|f| {
-                            f.create_button(|f| {
-                                f.style(ButtonStyle::Link)
-                                    .label("Test")
-                                    .url(&"https://google.com")
-                            })
+                        f.create_action_row(|a| {
+                            a.0 = action_row.0;
+                            a
                         })
                     })
             }).await.unwrap();
@@ -268,12 +336,9 @@ async fn handle_response(ctx: Context, msg: &serenity::model::channel::Message, 
                     e.0 = embed.0;
                     e
                 }).components(|f| {
-                    f.create_action_row(|f| {
-                        f.create_button(|f| {
-                            f.style(ButtonStyle::Link)
-                                .label("Test")
-                                .url(&"https://google.com")
-                        })
+                    f.create_action_row(|a| {
+                        a.0 = action_row.0;
+                        a
                     })
                 })
                 .reference_message(msg)
@@ -401,14 +466,14 @@ impl EventHandler for Handler {
             // This may seem unintuitive, but it models Discord's behaviour.
             println!("READY ({}) on shard {}/{}!", ready.user.name, shard[0], shard[1],);
 
-            ctx.set_activity(Activity::listening("your music! (but Rust)")).await;
+            ctx.set_activity(Activity::listening("your music!")).await;
         }
     }
 
     async fn interaction_create(&self, ctx: Context, interaction: Interaction) {
         let interaction_clone = interaction.clone();
         if let Interaction::ApplicationCommand(command) = interaction {
-            println!("Received command interaction: {:#?}", command);
+            // println!("Received command interaction: {:#?}", command);
             let name = &command.data.name;
 
             if name == "help" {
@@ -419,9 +484,17 @@ impl EventHandler for Handler {
                             .interaction_response_data(|message| {
                                 message.embed(|embed| {
                                     embed.title("What's That Song?")
-                                        .description("fdgdfhgfhgf")
+                                        .description("**Figure out what song is playing with videos, audio files, and web URLs on Discord.**
+
+There are a few ways you can use the bot:
+
+:one: If you have access to use application commands in a server, you will be able to match other people's media and URLs by right clicking their message and choosing **Apps > What's That Song?**. The results will be sent to you privately.
+
+:two: Send a message in a server **@ mentioning the bot** with a URL or media file.
+
+:three: **DM the bot** with a URL or media file.")
                                         .color(Colour::BLUE)
-                                })
+                                }).flags(MessageFlags::EPHEMERAL)
                             })
                     })
                     .await
