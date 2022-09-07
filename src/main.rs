@@ -81,6 +81,10 @@ struct ShazamProviderList {
     deezer: Option<ShazamProvider>,
 }
 
+struct SpotifyResponse {
+    url: Option<String>
+}
+
 struct Handler;
 
 lazy_static! {
@@ -122,6 +126,28 @@ async fn fetch_url(url: &str) -> ShazamResponse {
         }
     };
     return data;
+}
+
+async fn fetch_spotify(artist: &str, song: &str) -> SpotifyResponse {
+    let api_server = dotenv::var("API_SERVER").unwrap();
+    let url = &format!("{}/spotify?artist={}&song={}", api_server, encode(artist), encode(song));
+    match CLIENT.get(url).send().await {
+        Ok(data) => {
+            // Check if the status is successful
+            if data.status().is_success() {
+                return SpotifyResponse {
+                    url: Some(data.text().await.unwrap().to_string())
+                }
+            } else {
+                return SpotifyResponse {
+                    url: None
+                }
+            }
+        },
+        Err(err) => {
+            panic!("Spotify request failed: {:?}", err);
+        }
+    };
 }
 
 async fn fetch_direct(url: &str) -> ShazamResponse {
@@ -205,9 +231,11 @@ async fn handle_response(ctx: Context, msg: &serenity::model::channel::Message, 
     };
     println!("Found track: {}", track.title);
     let title = track.title;
-    let subtitle = track.subtitle;
+    let artist = track.subtitle;
     let url = track.url;
     let coverart = track.images.coverarthq;
+
+    let spotify = fetch_spotify(&artist, &title).await;
 
     // Set message to a random string from RANDOM_MESSAGES
     let message = RANDOM_MESSAGES.choose(&mut rand::thread_rng()).unwrap().to_string();
@@ -216,7 +244,7 @@ async fn handle_response(ctx: Context, msg: &serenity::model::channel::Message, 
 
     let mut embed = serenity::builder::CreateEmbed::default();
     embed.title(&title)
-        .description(&subtitle)
+        .description(&artist)
         .url(&url)
         .color(Colour::BLUE)
         .thumbnail(&coverart)
@@ -260,12 +288,17 @@ async fn handle_response(ctx: Context, msg: &serenity::model::channel::Message, 
     let mut buttons: Vec<serenity::builder::CreateButton> = Vec::new();
     
     // Iterate through providers and add them to the embed
-    if providers.spotify.is_some() {
-        let provider = providers.spotify.unwrap();
-        let url = provider.actions[0].uri.clone().replace("spotify:search:", "https://open.spotify.com/search/");
+    // if spotify.url.is_some() {
+    if providers.apple.is_some() {
+        // let provider = providers.spotify.unwrap();
+        // let url = provider.actions[0].uri.clone().replace("spotify:search:", "https://open.spotify.com/search/");
         let mut button = serenity::builder::CreateButton::default();
         let emoji = ReactionType::try_from("<:Spotify:1014768475593506836>").unwrap();
 
+        // if spotify.url.is_some() {
+            let url = spotify.url.unwrap();
+        // }
+        
         button.label("Spotify")
             .style(ButtonStyle::Link)
             .url(&url)
@@ -286,7 +319,7 @@ async fn handle_response(ctx: Context, msg: &serenity::model::channel::Message, 
         buttons.push(button);
     }
 
-    let query = encode(&format!("{} {}", title, subtitle)).to_string();
+    let query = encode(&format!("{} {}", title, artist)).to_string();
     let url = "https://music.youtube.com/search?q=".to_string() + &query;
     let mut button = serenity::builder::CreateButton::default();
     let emoji = ReactionType::try_from("<:YouTube Music:1016942966012661762>").unwrap();
@@ -297,19 +330,19 @@ async fn handle_response(ctx: Context, msg: &serenity::model::channel::Message, 
         .emoji(emoji);
     buttons.push(button);
 
-    if providers.deezer.is_some() {
-        // Shazam's Deezer links don't work in the web client, so we need to generate our own based on track title and artist name
-        let query = encode(&format!("{} {}", title, subtitle)).to_string();
-        let url = format!("https://www.deezer.com/search/{}", query);
-        let mut button = serenity::builder::CreateButton::default();
-        let emoji = ReactionType::try_from("<:Deezer:1016912951355125812>").unwrap();
+    // if providers.deezer.is_some() {
+    //     // Shazam's Deezer links don't work in the web client, so we need to generate our own based on track title and artist name
+    //     let query = encode(&format!("{} {}", title, artist)).to_string();
+    //     let url = format!("https://www.deezer.com/search/{}", query);
+    //     let mut button = serenity::builder::CreateButton::default();
+    //     let emoji = ReactionType::try_from("<:Deezer:1016912951355125812>").unwrap();
 
-        button.label("Deezer")
-            .style(ButtonStyle::Link)
-            .url(&url)
-            .emoji(emoji);
-        buttons.push(button);
-    }
+    //     button.label("Deezer")
+    //         .style(ButtonStyle::Link)
+    //         .url(&url)
+    //         .emoji(emoji);
+    //     buttons.push(button);
+    // }
 
     // Create Action Row
     let mut action_row = serenity::builder::CreateActionRow::default();
@@ -349,7 +382,7 @@ async fn handle_response(ctx: Context, msg: &serenity::model::channel::Message, 
     } else {
         if let Err(why) = msg.channel_id.send_message(&ctx.http, |m|
             m.content(message)
-                .embed(|e| {
+                .add_embed(|e| {
                     e.0 = embed.0;
                     e
                 }).components(|f| {

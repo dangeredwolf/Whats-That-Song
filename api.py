@@ -1,6 +1,8 @@
+import asyncio
 import mimetypes
 import os
 import random
+import time
 import aiohttp
 import flask
 import yt_dlp as yt
@@ -143,6 +145,90 @@ async def process_video(url):
                 except:
                     pass
                 raise e
+
+token = None
+token_expires = 0
+
+async def get_spotify_token():
+
+    global token
+    global token_expires
+    # Compare current time ms to token_expires
+    if (token_expires > time.time() * 1000):
+        print("We already have a hopefully valid token")
+        return token
+    async with aiohttp.ClientSession() as session:
+        async with session.get("https://open.spotify.com/get_access_token?reason=transport&productType=web-player", headers=headers) as resp:
+            # If we get a 200, we have a valid token
+            if resp.status == 200:
+                data = await resp.json()
+                token = data.get("accessToken")
+                token_expires = data.get("accessTokenExpirationTimestampMs")
+                return token
+            elif resp.status == 429:
+                print("We got rate limited, gimme a sec")
+                await asyncio.sleep(1)
+                return await get_spotify_token()
+
+@app.route("/spotify")
+async def spotify_search():
+    song = flask.request.args.get("song")
+    artist = flask.request.args.get("artist")
+    if song is None:
+        return "No song provided", 400
+    if artist is None:
+        return "No artist provided", 400
+    query = song + " " + artist
+    print(f"Searching Spotify for {query}")
+    token = await get_spotify_token()
+    async with aiohttp.ClientSession() as session:
+        async with session.get(f"https://api.spotify.com/v1/search?q={query}&type=track&limit=1", headers={**headers, "Authorization": f"Bearer {token}"}) as resp:
+            if resp.status == 200:
+                data = await resp.json()
+                tracks = data.get("tracks")
+                if tracks is None:
+                    print("Check failed: tracks is None")
+                    return "", 404
+                items = tracks.get("items")
+                if items is None:
+                    print("Check failed: items is None")
+                    return "", 404
+                item = items[0]
+                if item is None:
+                    print("Check failed: item[0] is None")
+                    return "", 404
+                # Check through artists to make sure original artist is in the list
+                artists = item.get("artists")
+                if artists is None:
+                    print("Check failed: artists is None")
+                    return "", 404
+                matched_artist = False
+                for artistI in artists:
+                    # We have some leniency here because Spotify might include extra things like (feat. etc)
+                    if artist.lower() in artistI.get("name").lower() or artistI.get("name").lower() in artist.lower():
+                        print("Matched artist")
+                        matched_artist = True
+                        break
+                if not matched_artist:
+                    print("Check failed: No matching artist")
+                    return "", 404
+                matched_song = False
+                for songI in items:
+                    # We have some leniency here because Spotify might include extra things like (feat. etc)
+                    if song.lower() in songI.get("name").lower() or songI.get("name").lower() in song.lower():
+                        print("Matched song")
+                        matched_song = True
+                        break
+                if not matched_song:
+                    print("Check failed: No matching song title")
+                    return "", 404
+                resp = flask.Response(item.get("external_urls").get("spotify"))
+                resp.headers['Content-Type'] = 'text/plain'
+                return resp
+            elif resp.status == 429:
+                print("We got rate limited, let's try another token")
+                token = await get_spotify_token()
+                return await spotify_search()
 
 # start server
 app.run(host="localhost", port=6799)
