@@ -249,6 +249,8 @@ async fn handle_response(ctx: Context, msg: &serenity::model::channel::Message, 
                     if url.starts_with("https://music.apple.com/subscribe") {
                         continue;
                     }
+
+                    providers.apple = Some(option);
                 },
                 _ => {}
             }
