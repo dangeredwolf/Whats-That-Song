@@ -244,7 +244,11 @@ async fn handle_response(ctx: Context, msg: &serenity::model::channel::Message, 
         if option.providername.is_some() {
             match option.providername.clone().unwrap().as_str() {
                 "applemusic" => {
-                    providers.apple = Some(option);
+                    let url = option.actions[0].uri.clone();
+                    // Occurs if the song was not found on Apple Music
+                    if url.starts_with("https://music.apple.com/subscribe") {
+                        continue;
+                    }
                 },
                 _ => {}
             }
@@ -279,6 +283,17 @@ async fn handle_response(ctx: Context, msg: &serenity::model::channel::Message, 
             .emoji(emoji);
         buttons.push(button);
     }
+
+    let query = encode(&format!("{} {}", title, subtitle)).to_string();
+    let url = "https://music.youtube.com/search?q=".to_string() + &query;
+    let mut button = serenity::builder::CreateButton::default();
+    let emoji = ReactionType::try_from("<:YouTube Music:1016942966012661762>").unwrap();
+
+    button.label("YouTube Music")
+        .style(ButtonStyle::Link)
+        .url(&url)
+        .emoji(emoji);
+    buttons.push(button);
 
     if providers.deezer.is_some() {
         // Shazam's Deezer links don't work in the web client, so we need to generate our own based on track title and artist name
