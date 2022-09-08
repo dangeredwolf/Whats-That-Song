@@ -222,7 +222,7 @@ async def spotify_search():
                 if not matched_song:
                     print("Check failed: No matching song title")
                     return "", 404
-                resp = flask.Response(item.get("external_urls").get("spotify"))
+                resp = flask.Response(item.get("external_urls").get("spotify") + "?si")
                 resp.headers['Content-Type'] = 'text/plain'
                 return resp
             elif resp.status == 429:
