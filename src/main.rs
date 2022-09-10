@@ -64,7 +64,7 @@ struct ShazamTrack {
     title: String,
     subtitle: String,
     url: String,
-    images: ShazamImages,
+    images: Option<ShazamImages>,
     sections: Vec<ShazamSection>,
     hub: ShazamHub
 }
@@ -233,8 +233,7 @@ async fn handle_response(ctx: Context, msg: &serenity::model::channel::Message, 
     let title = track.title;
     let artist = track.subtitle;
     let url = track.url;
-    let coverart = track.images.coverarthq;
-
+    
     let spotify = fetch_spotify(&artist, &title).await;
 
     // Set message to a random string from RANDOM_MESSAGES
@@ -247,8 +246,14 @@ async fn handle_response(ctx: Context, msg: &serenity::model::channel::Message, 
         .description(&artist)
         .url(&url)
         .color(Colour::BLUE)
-        .thumbnail(&coverart)
         .footer(|f| f.text("Shazam").icon_url("https://cdn.discordapp.com/attachments/165560751363325952/1014753423045955674/84px-Shazam_icon.svg1.png"));
+
+    // If we have images, then set coverart to the coverarthq
+    if track.images.is_some() {
+        let images = track.images.unwrap();
+        let coverarthq = images.coverarthq.as_str();
+        embed.thumbnail(&coverarthq);
+    }
     
     // make new ShazamProviderList
     let mut providers = ShazamProviderList {
@@ -289,7 +294,7 @@ async fn handle_response(ctx: Context, msg: &serenity::model::channel::Message, 
     
     // Iterate through providers and add them to the embed
     // if spotify.url.is_some() {
-    if providers.apple.is_some() {
+    if providers.spotify.is_some() {
         // let provider = providers.spotify.unwrap();
         // let url = provider.actions[0].uri.clone().replace("spotify:search:", "https://open.spotify.com/search/");
         let mut button = serenity::builder::CreateButton::default();
