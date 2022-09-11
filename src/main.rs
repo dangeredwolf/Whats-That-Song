@@ -293,8 +293,8 @@ async fn handle_response(ctx: Context, msg: &serenity::model::channel::Message, 
     let mut buttons: Vec<serenity::builder::CreateButton> = Vec::new();
     
     // Iterate through providers and add them to the embed
-    // if spotify.url.is_some() {
-    if providers.spotify.is_some() {
+    if spotify.url.is_some() {
+    // if providers.spotify.is_some() {
         // let provider = providers.spotify.unwrap();
         // let url = provider.actions[0].uri.clone().replace("spotify:search:", "https://open.spotify.com/search/");
         let mut button = serenity::builder::CreateButton::default();
