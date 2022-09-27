@@ -200,7 +200,7 @@ async fn handle_response(ctx: Context, msg: &serenity::model::channel::Message, 
                 },
                 None => {
                     error_embed.title("Failed to process media")
-                        .description("We tried processing the media you requested, but an error occurred somewhere along the way. Sorry about that.\n\n**What might cause this issue?**\n• You tried processing media longer than 1 hour (we limit this to keep bandwidth usage and response times lower)\n• You tried processing a currently live stream (we can't process those because we can't download the whole thing!)\n• You uploaded a corrupt media file, or one not supported by FFmpeg.")
+                        .description("We tried processing the media you requested, but an error occurred somewhere along the way. Sorry about that.\n\n**What might cause this issue?**\n• You tried processing media longer than 1 hour\n• You tried processing a currently active live stream\n• You uploaded a corrupt media file, or one not supported by FFmpeg.")
                         .color(Colour::RED);
                 }
             }
