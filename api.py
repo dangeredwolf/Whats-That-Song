@@ -21,8 +21,8 @@ def ytdl_filter(info):
     # print json conversion of info
     if (info.get("is_live")):
         return "WTS cannot process currently live streams"
-    if (info.get("duration") > 1800): # 30 minutes
-        return "WTS cannot process videos longer than 30 minutes"
+    if (info.get("duration") > 3600): # 60 minutes
+        return "WTS cannot process videos longer than 60 minutes"
     
     return None
 
@@ -126,7 +126,7 @@ async def process_video(url):
             try:
                 print(f"Extracting audio from {url}")
                 # Call system ffmpeg to convert to aac
-                os.system(f"ffmpeg -i {filename} -t 60 -vn -acodec aac {audiofilename}")
+                os.system(f"ffmpeg -i {filename} -t 180 -vn -acodec aac {audiofilename}")
                 os.remove(filename)
                 print(f"Finding music in {url}")
                 out = await shazam.recognize_song(audiofilename)
