@@ -195,12 +195,12 @@ async fn handle_response(ctx: Context, msg: &serenity::model::channel::Message, 
             match data.timestamp {
                 Some(_) => {
                     error_embed.title("No matches found")
-                        .description("We searched your media for a matching song, and couldn't find anything.")
+                        .description("We searched your media for a matching song, and couldn't find anything.\n\n**What are common causes for this?**\n• There is no music in the first few minutes of the media (we can only send so much data to Shazam)\n• Loud voiceovers can make it harder to recognize music\n• The song is not in Shazam's database")
                         .color(Colour::ORANGE);
                 },
                 None => {
                     error_embed.title("Failed to process media")
-                        .description("We tried processing the media you requested, but an error occurred somewhere along the way. Sorry about that.")
+                        .description("We tried processing the media you requested, but an error occurred somewhere along the way. Sorry about that.\n\n**What might cause this issue?**\n• You tried processing media longer than 1 hour (we limit this to keep bandwidth usage and response times lower)\n• You tried processing a currently live stream (we can't process those because we can't download the whole thing!)\n• You uploaded a corrupt media file, or one not supported by FFmpeg.")
                         .color(Colour::RED);
                 }
             }
