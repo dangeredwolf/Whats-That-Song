@@ -1,25 +1,21 @@
-FROM python:3.13-alpine
+FROM python:3.13-slim
 
-# Runtime system deps
-RUN apk add --no-cache \
+RUN apt-get update && apt-get install -y --no-install-recommends \
     ffmpeg \
     git \
-    libsodium \
-    opus
-
-# Build-time deps needed to compile PyNaCl and other native extensions
-RUN apk add --no-cache --virtual .build-deps \
     gcc \
-    musl-dev \
+    pkg-config \
     libffi-dev \
-    libsodium-dev
+    libsodium-dev \
+    libopus-dev \
+    libasound2-dev \
+    && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 
 COPY requirements.txt .
 
-RUN pip install --no-cache-dir -r requirements.txt \
-    && apk del .build-deps
+RUN pip install --no-cache-dir -r requirements.txt
 
 COPY *.py .
 
