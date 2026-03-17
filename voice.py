@@ -3,12 +3,16 @@
 import asyncio
 import io
 import os
+import pathlib
 from datetime import datetime
 from typing import Awaitable, Callable
 
+import discord
 import discord.ext.voice_recv as voice_recv
 
 from audio import shazam
+
+AUDIO_DIR = pathlib.Path(__file__).parent / "audio"
 
 SAMPLE_INTERVAL = 2
 MAX_SAMPLES = 15
@@ -20,6 +24,20 @@ UI_UPDATE_INTERVAL = 0.1
 
 # Set to a directory path to save debug output (raw PCM + MP3). Example: "debug_voice"
 DEBUG_SAVE_VOICE_DIR: str | None = None#"debug_voice"
+
+
+async def play_audio_cue(vc: voice_recv.VoiceRecvClient, filename: str) -> None:
+    """Play an audio file into the voice channel and wait for playback to finish."""
+    path = AUDIO_DIR / filename
+    if not path.exists():
+        print(f"Audio cue not found: {path}")
+        return
+    if not vc.is_connected():
+        return
+    done = asyncio.Event()
+    source = discord.FFmpegPCMAudio(str(path))
+    vc.play(source, after=lambda _: done.set())
+    await done.wait()
 
 
 class _PerUserPCMSink(voice_recv.AudioSink):
@@ -169,5 +187,5 @@ async def listen_and_recognize(
                 await ui_task
             except asyncio.CancelledError:
                 pass
-        if vc.is_connected():
-            await vc.disconnect()
+        # Disconnect is handled by the caller so it can play result cues first
+        pass

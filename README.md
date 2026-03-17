@@ -58,3 +58,5 @@ There are several ways to use the bot:
 ## License
 
 MIT License - see LICENSE.md for details
+
+Listen audio cues from Zapsplat

@@ -18,7 +18,7 @@ from responses import (
     build_stopped_components,
     send_track_response,
 )
-from voice import TOTAL_LISTEN_SECONDS, UI_UPDATE_INTERVAL, listen_and_recognize
+from voice import TOTAL_LISTEN_SECONDS, UI_UPDATE_INTERVAL, listen_and_recognize, play_audio_cue
 
 # Maps interaction_id -> (asyncio.Event, summoner_user_id) for /listen stop button
 _listen_stop_events: dict[str, tuple[asyncio.Event, int]] = {}
@@ -219,8 +219,9 @@ async def listen_command(interaction: discord.Interaction):
         components = build_listening_components(seconds_left, stop_custom_id, sample_num=frame)
         await _edit_original_response_v2(interaction, components)
 
-    # Show initial listening UI
+    # Show initial listening UI and play recording cue
     await update_listening_ui(0, float(TOTAL_LISTEN_SECONDS))
+    await play_audio_cue(vc, "recording.mp3")
 
     try:
         result = await listen_and_recognize(
@@ -229,21 +230,27 @@ async def listen_command(interaction: discord.Interaction):
             progress_callback=update_listening_ui,
         )
         if result.get("stopped"):
+            await play_audio_cue(vc, "cancel.mp3")
             await _edit_original_response_v2(interaction, build_stopped_components())
+        elif result.get("track"):
+            await play_audio_cue(vc, "match.mp3")
+            await send_track_response(interaction, result, edit_instead=True, source="listen")
         else:
+            await play_audio_cue(vc, "nomatch.mp3")
             await send_track_response(interaction, result, edit_instead=True, source="listen")
     except Exception as e:
         print(f"Listen command error: {e}")
-        try:
-            if vc.is_connected():
-                await vc.disconnect(force=True)
-        except Exception:
-            pass
+        await play_audio_cue(vc, "cancel.mp3")
         await send_track_response(
             interaction, {"timestamp": None, "track": None}, edit_instead=True, source="listen"
         )
     finally:
         _listen_stop_events.pop(str(interaction.id), None)
+        try:
+            if vc.is_connected():
+                await vc.disconnect()
+        except Exception:
+            pass
 
 
 @tree.command(name="help", description="Learn how to use What's That Song?")
