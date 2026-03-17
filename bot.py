@@ -220,8 +220,10 @@ async def listen_command(interaction: discord.Interaction):
         await _edit_original_response_v2(interaction, components)
 
     # Show initial listening UI and play recording cue
-    await update_listening_ui(0, float(TOTAL_LISTEN_SECONDS))
-    await play_audio_cue(vc, "recording.mp3")
+    await asyncio.gather(
+        update_listening_ui(0, float(TOTAL_LISTEN_SECONDS)),
+        play_audio_cue(vc, "recording.mp3"),
+    )
 
     try:
         result = await listen_and_recognize(
@@ -229,15 +231,22 @@ async def listen_command(interaction: discord.Interaction):
             stop_event=stop_event,
             progress_callback=update_listening_ui,
         )
+
         if result.get("stopped"):
-            await play_audio_cue(vc, "cancel.mp3")
-            await _edit_original_response_v2(interaction, build_stopped_components())
+            await asyncio.gather(
+                _edit_original_response_v2(interaction, build_stopped_components()),
+                play_audio_cue(vc, "cancel.mp3"),
+            )
         elif result.get("track"):
-            await play_audio_cue(vc, "match.mp3")
-            await send_track_response(interaction, result, edit_instead=True, source="listen")
+            await asyncio.gather(
+                send_track_response(interaction, result, edit_instead=True, source="listen"),
+                play_audio_cue(vc, "match.mp3"),
+            )
         else:
-            await play_audio_cue(vc, "nomatch.mp3")
-            await send_track_response(interaction, result, edit_instead=True, source="listen")
+            await asyncio.gather(
+                send_track_response(interaction, result, edit_instead=True, source="listen"),
+                play_audio_cue(vc, "nomatch.mp3"),
+            )
     except Exception as e:
         print(f"Listen command error: {e}")
         await play_audio_cue(vc, "cancel.mp3")

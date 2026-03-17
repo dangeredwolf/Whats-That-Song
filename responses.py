@@ -278,10 +278,6 @@ def build_error_components(has_timestamp: bool, source: str = "match") -> list[d
         description = (
             "We tried processing the media you requested, but an error occurred somewhere along the way. "
             "Sorry about that.\n\n"
-            "**What are common causes for this?**\n"
-            "• You tried processing media longer than 1 hour\n"
-            "• You tried processing a currently active live stream\n"
-            "• You uploaded a corrupt media file, or one not supported by FFmpeg."
         )
         accent_color = 0xED4245
 
