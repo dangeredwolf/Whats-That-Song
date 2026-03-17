@@ -1,6 +1,7 @@
-shazamio
-discord
-aiohttp
-yt_dlp
-flask
-flask[async]
+py-cord @ git+https://github.com/Pycord-Development/pycord.git@master
+py-cord[voice] @ git+https://github.com/Pycord-Development/pycord.git@master
+PyNaCl>=1.5.0
+shazamio>=0.6.0
+aiohttp>=3.10.0
+yt-dlp>=2026.03.0
+python-dotenv>=1.0.0

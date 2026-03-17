@@ -1,21 +1,60 @@
 What's That Song?
 ==
 
-A Discord bot that finds the song given a video or audio file, using Shazam.
+A Discord bot that identifies songs from videos, audio files, and URLs using Shazam.
 
-Bot written in Rust with Serenity. Interfaces with an internal API written in Python that connects to ShazamIO and yt-dlp.
+## Quick Start
 
-## Quick start
+### Prerequisites
 
-1. Install Python 3.8 or later (3.10 recommended) and FFmpeg, and Rust toolchain
-2. Install the Python API requirements with `pip install -r requirements.txt`
-3. Put bot token in `.env`
-4. Run `api.py`
-5. `cargo build --release && target/release/whats-that-song`
-6. Profit
+- Python 3.10 or later
+- FFmpeg installed and in your PATH
+- Discord bot token from [Discord Developer Portal](https://discord.com/developers/applications)
+- Spotify API credentials from [Spotify Developer Dashboard](https://developer.spotify.com/dashboard) (optional but recommended)
+
+### Installation
+
+1. Clone this repository
+2. Install dependencies:
+   ```bash
+   pip install -r requirements.txt
+   ```
+3. Copy `.env.example` to `.env` and fill in your credentials:
+   ```
+   DISCORD_TOKEN=your_discord_bot_token
+   SPOTIFY_CLIENT_ID=your_spotify_client_id
+   SPOTIFY_CLIENT_SECRET=your_spotify_client_secret
+   ```
+4. Run the bot:
+   ```bash
+   python bot.py
+   ```
+
+### Setting up Spotify API (Optional)
+
+1. Go to [Spotify Developer Dashboard](https://developer.spotify.com/dashboard)
+2. Create a new app
+3. Copy the Client ID and Client Secret
+4. Add them to your `.env` file
+
+Without Spotify credentials, the bot will still work but won't include Spotify links in responses.
+
+## Usage
+
+There are several ways to use the bot:
+
+1. **`/match` command** - Use the slash command with a file attachment or URL
+2. **Message context menu** - Right-click any message and select "Apps > What's That Song?"
+3. **Mention the bot** - @ mention the bot in a server with a URL or attachment
+4. **DM the bot** - Send a URL or file directly to the bot in a DM
 
 ## Limitations
 
-We extract only the first minute of audio out of an audio clip. If music occurs later on in a video or audio clip, it will not be recognized.
+- We extract up to 3 minutes of audio from media files
+- Active live streams cannot be processed
+- Videos longer than 60 minutes are rejected to keep response times reasonable
+- Song recognition depends on Shazam's database coverage
 
-Active live streams, and videos longer than 30 minutes, will not be processed using yt-dlp extractor. This is to help keep response times low.
+## License
+
+MIT License - see LICENSE.md for details
