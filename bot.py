@@ -30,7 +30,7 @@ intents = discord.Intents.default()
 intents.messages = True
 intents.voice_states = True
 
-client = discord.Client(intents=intents)
+client = discord.AutoShardedClient(intents=intents)
 tree = app_commands.CommandTree(client)
 
 
