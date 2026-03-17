@@ -165,7 +165,6 @@ def build_components_v2_components(
     """Return a Components V2 component list for a successful track match, or None."""
 
     # print out track data
-    print(track_data)
     track = track_data.get("track")
     if not track:
         return None
