@@ -1,5 +1,6 @@
-py-cord @ git+https://github.com/Pycord-Development/pycord.git@master
-py-cord[voice] @ git+https://github.com/Pycord-Development/pycord.git@master
+discord.py>=2.7.0
+discord-ext-voice-recv @ git+https://github.com/vocolboy/discord-ext-voice-recv.git@main
+davey
 PyNaCl>=1.5.0
 shazamio>=0.6.0
 aiohttp>=3.10.0

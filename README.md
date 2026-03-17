@@ -1,4 +1,4 @@
-What's That Song?
+What's That Song? (v2)
 ==
 
 A Discord bot that identifies songs from videos, audio files, and URLs using Shazam.

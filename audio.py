@@ -5,12 +5,24 @@ import mimetypes
 import os
 import re
 import tempfile
+import traceback
+from urllib.parse import unquote, urlparse
 
 import aiohttp
 import yt_dlp as yt
 from shazamio import Shazam
 
 from config import HEADERS, TWITTER_LINK_REGEX
+
+# Discord CDN hosts for attachment URLs (always direct-downloadable media)
+DISCORD_CDN_HOSTS = ("cdn.discordapp.com", "media.discordapp.net")
+
+
+def _normalize_shazam_result(result: dict | None) -> dict:
+    """Normalize Shazam response so no-match shows 'No matches found' not 'Failed to process'."""
+    if not isinstance(result, dict) or not result.get("track"):
+        return {"timestamp": 0, "track": None}
+    return result
 
 # Initialize
 mimetypes.init()
@@ -68,8 +80,34 @@ def _make_ytdl(tmpdir: str) -> yt.YoutubeDL:
     )
 
 
+def _is_discord_cdn(url: str) -> bool:
+    """Check if URL is from Discord's attachment CDN (includes ephemeral-attachments)."""
+    try:
+        parsed = urlparse(url)
+        if parsed.netloc.lower() not in DISCORD_CDN_HOSTS:
+            return False
+        path = parsed.path.lower()
+        return "/attachments/" in path or "/ephemeral-attachments/" in path
+    except Exception:
+        return False
+
+
+def _extension_from_url(url: str) -> str:
+    """Extract file extension from URL path for temp file naming."""
+    try:
+        path = urlparse(url).path
+        filename = unquote(path.split("/")[-1]) if path else ""
+        if "." in filename:
+            return "." + filename.rsplit(".", 1)[-1].lower()
+    except Exception:
+        pass
+    return ".media"
+
+
 def should_direct_download(url: str) -> bool:
     """Check if URL points to a direct media file."""
+    if _is_discord_cdn(url):
+        return True
     url_lower = url.lower()
     guessed = mimetypes.guess_type(url_lower)[0]
     if guessed:
@@ -85,12 +123,17 @@ async def process_direct_video(url: str, start_time: int = 0):
         async with aiohttp.ClientSession() as session:
             async with session.get(url, headers=HEADERS) as resp:
                 if resp.status != 200:
-                    print(f"Failed to download: HTTP {resp.status}")
+                    print(f"Failed to download: HTTP {resp.status} for {url}")
                     return {"timestamp": None, "track": None}
 
                 video_data = await resp.read()
 
-        with tempfile.NamedTemporaryFile(suffix=".media", delete=False) as tmp:
+        if len(video_data) == 0:
+            print("Downloaded file is empty")
+            return {"timestamp": None, "track": None}
+
+        suffix = _extension_from_url(url)
+        with tempfile.NamedTemporaryFile(suffix=suffix, delete=False) as tmp:
             tmp.write(video_data)
             tmp_path = tmp.name
 
@@ -118,13 +161,24 @@ async def process_direct_video(url: str, start_time: int = 0):
                 stderr=asyncio.subprocess.PIPE,
             )
             audio_data, stderr = await proc.communicate()
+            stderr_text = stderr.decode(errors="replace")
 
             if proc.returncode != 0:
-                print(f"FFmpeg extraction failed: {stderr.decode(errors='replace')}")
+                print(f"FFmpeg extraction failed (exit {proc.returncode}): {stderr_text}")
                 return {"timestamp": None, "track": None}
 
-            print(f"Recognizing music from {url}")
-            return await shazam.recognize(audio_data)
+            if len(audio_data) == 0:
+                print("FFmpeg produced no audio output (file may have no audio track)")
+                return {"timestamp": None, "track": None}
+
+            print(f"Recognizing music from {url} ({len(audio_data):,} bytes)")
+            try:
+                result = await shazam.recognize(audio_data)
+                return _normalize_shazam_result(result)
+            except Exception as shazam_err:
+                print(f"Shazam recognition failed: {shazam_err}")
+                traceback.print_exc()
+                return {"timestamp": None, "track": None}
         finally:
             try:
                 os.unlink(tmp_path)
@@ -133,6 +187,7 @@ async def process_direct_video(url: str, start_time: int = 0):
 
     except Exception as e:
         print(f"Error processing video: {e}")
+        traceback.print_exc()
         return {"timestamp": None, "track": None}
 
 
@@ -218,12 +273,13 @@ async def process_ytdl(url: str, start_time: int = 0):
                         with open(filepath, "rb") as f:
                             audio_data = f.read()
 
-                    return await shazam.recognize(audio_data)
+                    return _normalize_shazam_result(await shazam.recognize(audio_data))
 
         return {"timestamp": None, "track": None}
 
     except Exception as e:
         print(f"Error processing with yt-dlp: {e}")
+        traceback.print_exc()
         return {"timestamp": None, "track": None}
 
 

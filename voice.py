@@ -1,127 +1,173 @@
 """Voice channel listening and music recognition."""
 
 import asyncio
-import wave
+import io
+import os
+from datetime import datetime
+from typing import Awaitable, Callable
 
-import discord
-from discord.opus import Decoder
+import discord.ext.voice_recv as voice_recv
 
 from audio import shazam
 
-SAMPLE_INTERVAL = 3
-MAX_SAMPLES = 5
-CONNECTION_WAIT_TIMEOUT = 10
+SAMPLE_INTERVAL = 2
+MAX_SAMPLES = 15
+TOTAL_LISTEN_SECONDS = SAMPLE_INTERVAL * MAX_SAMPLES  # 30 seconds
+
+# How often (in seconds) the listening UI is refreshed. Independent of the audio
+# sample rate — increase if you hit Discord rate limits, decrease for snappier animation.
+UI_UPDATE_INTERVAL = 0.1
+
+# Set to a directory path to save debug output (raw PCM + MP3). Example: "debug_voice"
+DEBUG_SAVE_VOICE_DIR: str | None = None#"debug_voice"
 
 
-class ListenWaveSink(discord.sinks.WaveSink):
-    """WaveSink compatible with py-cord dev's new voice receive API."""
+class _PerUserPCMSink(voice_recv.AudioSink):
+    """Writes decoded PCM into per-user BytesIO buffers.
 
-    __sink_listeners__: list[tuple[str, str]] = []
+    Accepts an existing buffers dict so audio accumulates across successive
+    listen windows without re-creating the dict.
+    """
 
-    def walk_children(self, with_self: bool = False):
-        """Required by SinkEventRouter. We have no child sinks."""
-        if with_self:
-            yield self
+    def __init__(self, buffers: dict[int, io.BytesIO]) -> None:
+        super().__init__()
+        self._buffers = buffers
 
-    def is_opus(self) -> bool:
-        """PacketDecoder expects this; we want PCM decoded to WAV."""
+    def wants_opus(self) -> bool:
         return False
 
-    def write(self, data, user):
-        """Accept VoiceData from the new PacketRouter; base Sink expects (bytes, user_id)."""
-        if hasattr(data, "pcm"):
-            pcm = data.pcm
-            user_id = getattr(user, "id", user) if user else 0
-        else:
-            pcm = data
-            user_id = user
-        super().write(pcm, user_id)
+    def write(self, user, data: voice_recv.VoiceData) -> None:
+        if user is None or not data.pcm:
+            return
+        uid = user.id
+        if uid not in self._buffers:
+            self._buffers[uid] = io.BytesIO()
+        self._buffers[uid].write(data.pcm)
 
-    def format_audio(self, audio):
-        """Format using opus.Decoder constants; new VoiceClient has no .decoder attr."""
-        is_recording = getattr(self.vc, "is_recording", None) if self.vc else None
-        if is_recording and is_recording():
-            raise discord.sinks.errors.WaveSinkError(
-                "Audio may only be formatted after recording is finished."
-            )
-        data = audio.file
-        pcm = data.getvalue()
-        data.seek(0)
-        data.truncate(0)
-        with wave.open(data, "wb") as f:
-            f.setnchannels(Decoder.CHANNELS)
-            f.setsampwidth(Decoder.SAMPLE_SIZE // Decoder.CHANNELS)
-            f.setframerate(Decoder.SAMPLING_RATE)
-            f.writeframes(pcm)
-        data.seek(0)
-        audio.on_format(self.encoding)
+    def cleanup(self) -> None:
+        pass
 
 
-async def _wait_until_connected(vc: discord.VoiceClient, timeout: float) -> bool:
-    """Wait for the voice client to be fully connected, returning False on timeout."""
-    for _ in range(int(timeout * 10)):
-        if vc.is_connected():
-            return True
-        await asyncio.sleep(0.1)
-    return False
+async def _pcm_to_mp3(pcm: bytes) -> bytes | None:
+    """Convert raw 48 kHz stereo 16-bit LE PCM to MP3 via ffmpeg.
 
-
-async def listen_and_recognize(vc: discord.VoiceClient) -> dict:
-    """Sample audio from a voice channel every 3 seconds (up to 15s) and recognize with Shazam.
-
-    Returns the same dict shape as process_media: {"timestamp": ..., "track": ...}.
-    Exits early on first match. Returns no-match result after all samples are exhausted.
+    Matches the audio format used by the /match pipeline, which is what
+    ShazamIO's fingerprinting engine is tuned to handle.
     """
-    try:
-        if not await _wait_until_connected(vc, CONNECTION_WAIT_TIMEOUT):
-            print("Voice connection failed: timed out waiting for connection")
-            return {"timestamp": None, "track": None}
+    proc = await asyncio.create_subprocess_exec(
+        "ffmpeg",
+        "-y", "-loglevel", "error",
+        "-f", "s16le", "-ar", "48000", "-ac", "2",
+        "-i", "pipe:0",
+        "-acodec", "libmp3lame",
+        "-f", "mp3", "pipe:1",
+        stdin=asyncio.subprocess.PIPE,
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.PIPE,
+    )
+    audio_data, stderr = await proc.communicate(input=pcm)
+    if proc.returncode != 0:
+        print(f"FFmpeg PCM→MP3 failed: {stderr.decode(errors='replace')}")
+        return None
+    return audio_data
 
+
+async def listen_and_recognize(
+    vc: voice_recv.VoiceRecvClient,
+    *,
+    stop_event: asyncio.Event | None = None,
+    progress_callback: Callable[[int, float], Awaitable[None]] | None = None,
+    ui_update_interval: float = UI_UPDATE_INTERVAL,
+) -> dict:
+    """Sample audio from a voice channel and recognise with Shazam.
+
+    Accumulates PCM per-user across all windows so that each successive attempt
+    gives Shazam more context.  Audio is converted to MP3 before each recognition
+    call to match the /match pipeline.
+
+    Returns a dict shaped like process_media's output: {"timestamp": ..., "track": ...}.
+    Returns early on the first match, or a no-match result after all samples.
+    If stop_event is set, returns early with {"timestamp": None, "track": None, "stopped": True}.
+
+    progress_callback(frame, seconds_left) is called on a separate task at
+    ui_update_interval, independent of the audio sample rate.
+    """
+    accumulated_buffers: dict[int, io.BytesIO] = {}
+
+    async def _ui_loop() -> None:
+        loop = asyncio.get_running_loop()
+        start = loop.time()
+        frame = 0
+        while True:
+            seconds_left = max(0.0, TOTAL_LISTEN_SECONDS - (loop.time() - start))
+            try:
+                await progress_callback(frame, seconds_left)
+            except Exception as e:
+                print(f"UI update error: {e}")
+            frame += 1
+            await asyncio.sleep(ui_update_interval)
+
+    ui_task = asyncio.create_task(_ui_loop()) if progress_callback else None
+
+    try:
         for i in range(MAX_SAMPLES):
+            if stop_event and stop_event.is_set():
+                print("Listening stopped by user")
+                return {"timestamp": None, "track": None, "stopped": True}
+
             if not vc.is_connected():
-                print("Voice connection lost during recording")
+                print("Voice connection lost during listening")
                 return {"timestamp": None, "track": None}
 
-            sink = ListenWaveSink()
-            sink.init(vc)
-            done = asyncio.Event()
-
-            def on_done(exception: Exception | None):
-                done.set()
-
-            vc.start_recording(sink, on_done)
+            sink = _PerUserPCMSink(accumulated_buffers)
+            vc.listen(sink)
             await asyncio.sleep(SAMPLE_INTERVAL)
+            vc.stop_listening()
 
-            # if not vc.is_recording():
-            #     print("Recording stopped unexpectedly")
-            #     done.set()
-            # else:
-            #     vc.stop_recording()
+            if stop_event and stop_event.is_set():
+                print("Listening stopped by user")
+                return {"timestamp": None, "track": None, "stopped": True}
 
-            try:
-                await asyncio.wait_for(done.wait(), timeout=5)
-            except asyncio.TimeoutError:
-                print("Timed out waiting for recording callback")
+            for uid, buf in list(accumulated_buffers.items()):
+                pcm = buf.getvalue()
+                if len(pcm) < 1000:
+                    continue
 
-            try:
-                sink.cleanup()
-            except Exception as e:
-                print(f"Sink cleanup failed: {e}")
+                print(
+                    f"Sample {i + 1}/{MAX_SAMPLES}: recognizing user {uid} "
+                    f"({len(pcm):,} cumulative PCM bytes)"
+                )
 
-            for user_id, audio in sink.audio_data.items():
                 try:
-                    data = audio.file.getvalue()
-                    if len(data) < 1000:
+                    mp3_data = await _pcm_to_mp3(pcm)
+                    if not mp3_data:
                         continue
-                    print(f"Recognizing sample {i + 1}/{MAX_SAMPLES} ({len(data)} bytes from user {user_id})")
-                    result = await shazam.recognize(data)
+
+                    if DEBUG_SAVE_VOICE_DIR:
+                        os.makedirs(DEBUG_SAVE_VOICE_DIR, exist_ok=True)
+                        ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+                        pcm_path = os.path.join(DEBUG_SAVE_VOICE_DIR, f"user_{uid}_sample{i+1}_{ts}.raw")
+                        mp3_path = os.path.join(DEBUG_SAVE_VOICE_DIR, f"user_{uid}_sample{i+1}_{ts}.mp3")
+                        with open(pcm_path, "wb") as f:
+                            f.write(pcm)
+                        with open(mp3_path, "wb") as f:
+                            f.write(mp3_data)
+                        print(f"Debug: saved PCM ({len(pcm):,} bytes) and MP3 ({len(mp3_data):,} bytes) to {DEBUG_SAVE_VOICE_DIR}/")
+
+                    result = await shazam.recognize(mp3_data)
                     if result.get("track"):
                         return result
+                    print(f"No match yet (sample {i + 1}/{MAX_SAMPLES})")
                 except Exception as e:
-                    print(f"Shazam recognition failed for user {user_id}: {e}")
-                    continue
+                    print(f"Shazam recognition failed for user {uid}: {e}")
 
         return {"timestamp": 0, "track": None}
     finally:
+        if ui_task is not None:
+            ui_task.cancel()
+            try:
+                await ui_task
+            except asyncio.CancelledError:
+                pass
         if vc.is_connected():
             await vc.disconnect()
