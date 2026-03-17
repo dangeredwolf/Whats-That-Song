@@ -20,8 +20,8 @@ from responses import (
 )
 from voice import TOTAL_LISTEN_SECONDS, UI_UPDATE_INTERVAL, listen_and_recognize
 
-# Maps interaction_id -> asyncio.Event for /listen stop button
-_listen_stop_events: dict[str, asyncio.Event] = {}
+# Maps interaction_id -> (asyncio.Event, summoner_user_id) for /listen stop button
+_listen_stop_events: dict[str, tuple[asyncio.Event, int]] = {}
 
 if not DISCORD_TOKEN:
     raise ValueError("DISCORD_TOKEN not found in environment variables")
@@ -71,11 +71,24 @@ async def on_interaction(interaction: discord.Interaction):
         return
 
     interaction_id = custom_id.removeprefix("listen_stop:")
-    event = _listen_stop_events.get(interaction_id)
-    if event:
-        event.set()
-
-    await interaction.response.defer_update()
+    entry = _listen_stop_events.get(interaction_id)
+    if entry:
+        event, summoner_id = entry
+        is_summoner = interaction.user.id == summoner_id
+        can_manage = (
+            isinstance(interaction.user, discord.Member)
+            and interaction.user.guild_permissions.manage_guild
+        )
+        if is_summoner or can_manage:
+            event.set()
+            await interaction.response.defer_update()
+        else:
+            await interaction.response.send_message(
+                "Only the person who started listening or an admin can stop it.",
+                ephemeral=True,
+            )
+    else:
+        await interaction.response.defer_update()
 
 
 @client.event
@@ -200,7 +213,7 @@ async def listen_command(interaction: discord.Interaction):
 
     stop_event = asyncio.Event()
     stop_custom_id = f"listen_stop:{interaction.id}"
-    _listen_stop_events[str(interaction.id)] = stop_event
+    _listen_stop_events[str(interaction.id)] = (stop_event, interaction.user.id)
 
     async def update_listening_ui(frame: int, seconds_left: float) -> None:
         components = build_listening_components(seconds_left, stop_custom_id, sample_num=frame)
