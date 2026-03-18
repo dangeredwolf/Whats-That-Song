@@ -38,7 +38,7 @@ HEADERS = {
     "Accept": "*/*",
     "Sec-Fetch-Site": "none",
     "Sec-Fetch-Mode": "no-cors",
-    "Accept-Encoding": "gzip, deflate, br",
+    "Accept-Encoding": "gzip, deflate",
     "Accept-Language": "en",
     "Cache-Control": "no-cache",
     "Pragma": "no-cache",
