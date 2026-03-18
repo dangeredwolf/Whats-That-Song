@@ -63,7 +63,7 @@ def _ytdl_filter(info):
 def _make_ytdl(tmpdir: str) -> yt.YoutubeDL:
     return yt.YoutubeDL(
         {
-            "format": "worstaudio/worst",
+            "format": "bestaudio/best",
             "outtmpl": os.path.join(tmpdir, "%(id)s.%(ext)s"),
             "postprocessors": [
                 {
