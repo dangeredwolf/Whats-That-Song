@@ -253,7 +253,7 @@ def build_components_v2_components(
     if buttons:
         components.append({"type": 1, "components": buttons})
 
-    container = {"type": 17, "components": components, "accent_color": 0x0a33ff}
+    container = {"type": 17, "components": components, "accent_color": 0x0071ff}
     return [container]
 
 
