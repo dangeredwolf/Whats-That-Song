@@ -181,7 +181,7 @@ async def match_command(
 
 @tree.command(
     name="listen",
-    description="Join your voice channel and identify music playing (listens up to 30 seconds)",
+    description="Join your voice channel and identify music playing",
 )
 @app_commands.allowed_installs(guilds=True, users=True)
 @app_commands.allowed_contexts(guilds=True)
@@ -276,7 +276,7 @@ There are a few ways you can use the bot:
 
 **2.** Use the `/listen` command while in a voice channel to have the bot join and identify music playing in the call (listens for up to 30 seconds).
 
-**3.** If you have access to use application commands in a server, you can right-click a message and choose **Apps > What's That Song?** to identify media in that message. The results will be sent to you privately.
+**3.** You can right-click a message and choose **Apps > What's That Song?** to identify media in that message. The results will be sent to you privately.
 
 **4.** Send a message in a server **@ mentioning the bot** with a URL or media file.
 
