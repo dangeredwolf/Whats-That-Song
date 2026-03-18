@@ -180,18 +180,20 @@ def build_components_v2_components(
     components = []
 
     section_text = f"## {title}\n### {artist}"
-    section_component: dict[str, Any] = {
-        "type": 9,
-        "components": [{"type": 10, "content": section_text}],
-    }
-
     if cover_url:
-        section_component["accessory"] = {
-            "type": 11,
-            "media": {"url": cover_url},
+        # Section (type 9) requires an accessory - use it when we have cover art
+        section_component: dict[str, Any] = {
+            "type": 9,
+            "components": [{"type": 10, "content": section_text}],
+            "accessory": {
+                "type": 11,
+                "media": {"url": cover_url},
+            },
         }
-
-    components.append(section_component)
+        components.append(section_component)
+    else:
+        # No cover art - use Text Display (type 10) to avoid Section's required accessory
+        components.append({"type": 10, "content": section_text})
     components.append({"type": 14})
 
     metadata_text = []
@@ -251,7 +253,7 @@ def build_components_v2_components(
     if buttons:
         components.append({"type": 1, "components": buttons})
 
-    container = {"type": 17, "components": components, "accent_color": 0x3498DB}
+    container = {"type": 17, "components": components, "accent_color": 0x0a33ff}
     return [container]
 
 
