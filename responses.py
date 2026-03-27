@@ -64,6 +64,40 @@ async def _send_components_v2(
         await ctx._state.http.request(route, json=payload)
 
 
+async def _post_components_v2_as_reply(
+    message: discord.Message,
+    components: list[dict[str, Any]],
+) -> int:
+    """POST a Components V2 message replying to ``message``; return the new message ID."""
+    payload: dict[str, Any] = {
+        "components": components,
+        "flags": COMPONENTS_V2_FLAG,
+        "message_reference": {"message_id": str(message.id)},
+        "allowed_mentions": {"replied_user": True},
+    }
+    route = Route("POST", "/channels/{channel_id}/messages", channel_id=message.channel.id)
+    data = await message._state.http.request(route, json=payload)
+    return int(data["id"])
+
+
+async def _edit_channel_message_components_v2(
+    scope: discord.Message,
+    message_id: int,
+    components: list[dict[str, Any]],
+) -> None:
+    """PATCH a channel/DM message to Components V2 (uses HTTP state from ``scope``)."""
+    route = Route(
+        "PATCH",
+        "/channels/{channel_id}/messages/{message_id}",
+        channel_id=scope.channel.id,
+        message_id=message_id,
+    )
+    await scope._state.http.request(
+        route,
+        json={"components": components, "flags": COMPONENTS_V2_FLAG},
+    )
+
+
 async def _edit_original_response_v2(
     interaction: discord.Interaction,
     components: list[dict[str, Any]],
@@ -141,6 +175,64 @@ def build_listening_components(
                 }
             ]},
         ],
+    }
+    return [container]
+
+
+# Phases for file/URL matching progress (must match audio.process_media callbacks)
+MATCH_PHASE_DOWNLOADING = "downloading"
+MATCH_PHASE_CONVERTING = "converting"
+MATCH_PHASE_MATCHING = "matching"
+
+_MATCH_PHASE_COPY: dict[str, tuple[str, str]] = {
+    MATCH_PHASE_DOWNLOADING: (
+        "Downloading media…",
+        "Fetching the file or stream you shared.",
+    ),
+    MATCH_PHASE_CONVERTING: (
+        "Preparing audio…",
+        "Extracting a clip for recognition.",
+    ),
+    MATCH_PHASE_MATCHING: (
+        "Identifying song…",
+        "Looking up what's playing with Shazam.",
+    ),
+}
+
+
+def build_matching_progress_components(phase: str, frame: int = 0) -> list[dict[str, Any]]:
+    """Components V2 payload while /match (or similar) is in progress."""
+
+    title, subtitle = _MATCH_PHASE_COPY.get(
+        phase, ("Working on it…", "Please wait a moment.")
+    )
+
+    cycle = _BAR_BOUNCE * 2
+    step = (frame * _BAR_STEP) % cycle
+    pos = step if step <= _BAR_BOUNCE else cycle - step
+    filled = (
+        "<:leftbar:1483317410143539360>"
+        + "<:centerbar:1483317425398218936>" * (_BAR_WINDOW - 2)
+        + "<:rightbar:1483317447028379730>"
+    )
+    bar = (
+        "<:transbar:1483317456838594610>" * pos
+        + filled
+        + "<:transbar:1483317456838594610>" * (_BAR_BOUNCE - pos)
+    )
+
+    tip_text = "\n".join(f"• {t}" for t in MATCH_ERROR_TIPS[:3])
+    content = (
+        f"# {title}\n\n"
+        f"{bar}\n\n"
+        f"{subtitle}\n\n"
+        f"**Tips:**\n{tip_text}"
+    )
+
+    container = {
+        "type": 17,
+        "components": [{"type": 10, "content": content}],
+        "accent_color": 0x0071ff,
     }
     return [container]
 
@@ -299,11 +391,14 @@ async def send_track_response(
     ephemeral: bool = False,
     edit_instead: bool = False,
     source: str = "match",
+    *,
+    replace_message_id: int | None = None,
 ) -> None:
     """Send a track response (success or error) to Discord.
 
     For interactions, the caller must have already deferred before calling this.
     If edit_instead is True and ctx is an Interaction, edits the original response instead of sending.
+    If replace_message_id is set and ctx is a Message, PATCH that message in the same channel (progress UI).
     source: "listen" for /listen (voice channel), "match" for /match (file/URL).
     """
     track = track_data.get("track")
@@ -311,7 +406,14 @@ async def send_track_response(
     if not track:
         has_timestamp = track_data.get("timestamp") is not None
         components = build_error_components(has_timestamp, source=source)
-        if edit_instead and isinstance(ctx_or_message, discord.Interaction):
+        if (
+            replace_message_id is not None
+            and isinstance(ctx_or_message, discord.Message)
+        ):
+            await _edit_channel_message_components_v2(
+                ctx_or_message, replace_message_id, components
+            )
+        elif edit_instead and isinstance(ctx_or_message, discord.Interaction):
             await _edit_original_response_v2(ctx_or_message, components, ephemeral=ephemeral)
         else:
             await _send_components_v2(ctx_or_message, components, ephemeral=ephemeral)
@@ -349,7 +451,14 @@ async def send_track_response(
     if not components:
         components = build_error_components(False, source=source)
 
-    if edit_instead and isinstance(ctx_or_message, discord.Interaction):
+    if (
+        replace_message_id is not None
+        and isinstance(ctx_or_message, discord.Message)
+    ):
+        await _edit_channel_message_components_v2(
+            ctx_or_message, replace_message_id, components
+        )
+    elif edit_instead and isinstance(ctx_or_message, discord.Interaction):
         await _edit_original_response_v2(ctx_or_message, components, ephemeral=ephemeral)
     else:
         await _send_components_v2(ctx_or_message, components, ephemeral=ephemeral)

@@ -11,10 +11,13 @@ import discord.ext.voice_recv as voice_recv
 from audio import parse_start_time, process_media, should_direct_download
 from config import DISCORD_TOKEN, LINK_REGEX, TWITTER_LINK_REGEX
 from responses import (
+    _edit_channel_message_components_v2,
     _edit_original_response_v2,
+    _post_components_v2_as_reply,
     _send_components_v2,
     build_error_components,
     build_listening_components,
+    build_matching_progress_components,
     build_stopped_components,
     send_track_response,
 )
@@ -32,6 +35,97 @@ intents.voice_states = True
 
 client = discord.AutoShardedClient(intents=intents)
 tree = app_commands.CommandTree(client)
+
+
+async def _run_match_with_progress_ui(
+    interaction: discord.Interaction,
+    media_url: str,
+    start_seconds: int,
+    *,
+    ephemeral: bool = False,
+) -> dict:
+    """Run process_media while animating Components V2 progress (like /listen)."""
+    state: dict[str, object] = {"phase": "downloading", "done": False}
+
+    async def on_progress(phase: str) -> None:
+        state["phase"] = phase
+
+    async def ui_loop() -> None:
+        frame = 0
+        while not state["done"]:
+            try:
+                await _edit_original_response_v2(
+                    interaction,
+                    build_matching_progress_components(str(state["phase"]), frame),
+                    ephemeral=ephemeral,
+                )
+            except Exception as e:
+                print(f"Match UI update error: {e}")
+            frame += 1
+            await asyncio.sleep(UI_UPDATE_INTERVAL)
+
+    await _edit_original_response_v2(
+        interaction,
+        build_matching_progress_components("downloading", 0),
+        ephemeral=ephemeral,
+    )
+    ui_task = asyncio.create_task(ui_loop())
+    try:
+        return await process_media(
+            media_url, start_seconds, progress=on_progress
+        )
+    finally:
+        state["done"] = True
+        ui_task.cancel()
+        try:
+            await ui_task
+        except asyncio.CancelledError:
+            pass
+
+
+async def _run_match_with_message_progress(
+    trigger: discord.Message,
+    media_url: str,
+    start_seconds: int = 0,
+) -> tuple[dict, int]:
+    """Reply with progress UI, animate like /match, return (result, bot_message_id)."""
+    state: dict[str, object] = {"phase": "downloading", "done": False}
+
+    async def on_progress(phase: str) -> None:
+        state["phase"] = phase
+
+    progress_id = await _post_components_v2_as_reply(
+        trigger,
+        build_matching_progress_components("downloading", 0),
+    )
+
+    async def ui_loop() -> None:
+        frame = 0
+        while not state["done"]:
+            try:
+                await _edit_channel_message_components_v2(
+                    trigger,
+                    progress_id,
+                    build_matching_progress_components(str(state["phase"]), frame),
+                )
+            except Exception as e:
+                print(f"Match UI update error: {e}")
+            frame += 1
+            await asyncio.sleep(UI_UPDATE_INTERVAL)
+
+    ui_task = asyncio.create_task(ui_loop())
+    try:
+        result = await process_media(
+            media_url, start_seconds, progress=on_progress
+        )
+        return result, progress_id
+    finally:
+        state["done"] = True
+        ui_task.cancel()
+        try:
+            await ui_task
+        except asyncio.CancelledError:
+            pass
 
 
 def _is_media_attachment(attachment: discord.Attachment) -> bool:
@@ -107,33 +201,45 @@ async def on_message(message: discord.Message):
     for attachment in message.attachments:
         if _is_media_attachment(attachment):
             print(f"Found media attachment: {attachment.url}")
-            async with message.channel.typing():
-                result = await process_media(attachment.url)
-                await send_track_response(message, result)
+            result, progress_id = await _run_match_with_message_progress(
+                message, attachment.url, 0
+            )
+            await send_track_response(
+                message, result, replace_message_id=progress_id
+            )
             return
 
     for embed in message.embeds:
         if embed.url:
             if should_direct_download(embed.url):
                 print(f"Found media embed: {embed.url}")
-                async with message.channel.typing():
-                    result = await process_media(embed.url)
-                    await send_track_response(message, result)
+                result, progress_id = await _run_match_with_message_progress(
+                    message, embed.url, 0
+                )
+                await send_track_response(
+                    message, result, replace_message_id=progress_id
+                )
                 return
             elif TWITTER_LINK_REGEX.match(embed.url):
                 print(f"Found Twitter embed: {embed.url}")
-                async with message.channel.typing():
-                    result = await process_media(embed.url)
-                    await send_track_response(message, result)
+                result, progress_id = await _run_match_with_message_progress(
+                    message, embed.url, 0
+                )
+                await send_track_response(
+                    message, result, replace_message_id=progress_id
+                )
                 return
 
     links = LINK_REGEX.findall(message.content)
     if links:
         url = links[0]
         print(f"Found URL in message: {url}")
-        async with message.channel.typing():
-            result = await process_media(url)
-            await send_track_response(message, result)
+        result, progress_id = await _run_match_with_message_progress(
+            message, url, 0
+        )
+        await send_track_response(
+            message, result, replace_message_id=progress_id
+        )
         return
 
 
@@ -171,12 +277,15 @@ async def match_command(
 
     if file:
         print(f"Processing attachment from /match: {file.url}")
-        result = await process_media(file.url, start_seconds or 0)
+        result = await _run_match_with_progress_ui(
+            interaction, file.url, start_seconds or 0
+        )
     else:
         print(f"Processing URL from /match: {url}")
-        result = await process_media(url, start_seconds or 0)
+        assert url is not None
+        result = await _run_match_with_progress_ui(interaction, url, start_seconds or 0)
 
-    await send_track_response(interaction, result)
+    await send_track_response(interaction, result, edit_instead=True)
 
 
 @tree.command(
@@ -304,24 +413,36 @@ async def whats_that_song_context(interaction: discord.Interaction, message: dis
     for attachment in message.attachments:
         if _is_media_attachment(attachment):
             print(f"Found media attachment: {attachment.url}")
-            result = await process_media(attachment.url)
-            await send_track_response(interaction, result, ephemeral=True)
+            result = await _run_match_with_progress_ui(
+                interaction, attachment.url, 0, ephemeral=True
+            )
+            await send_track_response(
+                interaction, result, ephemeral=True, edit_instead=True
+            )
             return
 
     for embed in message.embeds:
         if embed.url:
             if should_direct_download(embed.url) or TWITTER_LINK_REGEX.match(embed.url):
                 print(f"Found media in embed: {embed.url}")
-                result = await process_media(embed.url)
-                await send_track_response(interaction, result, ephemeral=True)
+                result = await _run_match_with_progress_ui(
+                    interaction, embed.url, 0, ephemeral=True
+                )
+                await send_track_response(
+                    interaction, result, ephemeral=True, edit_instead=True
+                )
                 return
 
     links = LINK_REGEX.findall(message.content)
     if links:
         url = links[0]
         print(f"Found URL: {url}")
-        result = await process_media(url)
-        await send_track_response(interaction, result, ephemeral=True)
+        result = await _run_match_with_progress_ui(
+            interaction, url, 0, ephemeral=True
+        )
+        await send_track_response(
+            interaction, result, ephemeral=True, edit_instead=True
+        )
         return
 
     await interaction.followup.send(

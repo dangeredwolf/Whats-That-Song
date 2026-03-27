@@ -6,6 +6,7 @@ import os
 import re
 import tempfile
 import traceback
+from collections.abc import Awaitable, Callable
 from urllib.parse import unquote, urlparse
 
 import aiohttp
@@ -27,6 +28,16 @@ def _normalize_shazam_result(result: dict | None) -> dict:
 # Initialize
 mimetypes.init()
 shazam = Shazam()
+
+# Progress phases reported to callers (e.g. Discord UI); see responses.MATCH_PHASE_*
+MatchProgressCallback = Callable[[str], Awaitable[None]]
+
+
+async def _report_progress(
+    progress: MatchProgressCallback | None, phase: str
+) -> None:
+    if progress:
+        await progress(phase)
 
 # Pattern for start time: "90", "1:30", "1:30:45"
 _START_TIME_REGEX = re.compile(r"^(?:(\d+):)?(?:(\d+):)?(\d+)$")
@@ -115,11 +126,17 @@ def should_direct_download(url: str) -> bool:
     return False
 
 
-async def process_direct_video(url: str, start_time: int = 0):
+async def process_direct_video(
+    url: str,
+    start_time: int = 0,
+    *,
+    progress: MatchProgressCallback | None = None,
+):
     """Download video/audio directly and process with Shazam."""
     print(f"Processing direct video: {url}" + (f" (from {start_time}s)" if start_time else ""))
 
     try:
+        await _report_progress(progress, "downloading")
         async with aiohttp.ClientSession() as session:
             async with session.get(url, headers=HEADERS) as resp:
                 if resp.status != 200:
@@ -138,6 +155,7 @@ async def process_direct_video(url: str, start_time: int = 0):
             tmp_path = tmp.name
 
         try:
+            await _report_progress(progress, "converting")
             ffmpeg_args = [
                 "ffmpeg",
                 "-y",
@@ -173,6 +191,7 @@ async def process_direct_video(url: str, start_time: int = 0):
 
             print(f"Recognizing music from {url} ({len(audio_data):,} bytes)")
             try:
+                await _report_progress(progress, "matching")
                 result = await shazam.recognize(audio_data)
                 return _normalize_shazam_result(result)
             except Exception as shazam_err:
@@ -191,12 +210,18 @@ async def process_direct_video(url: str, start_time: int = 0):
         return {"timestamp": None, "track": None}
 
 
-async def process_twitter(url: str, start_time: int = 0):
+async def process_twitter(
+    url: str,
+    start_time: int = 0,
+    *,
+    progress: MatchProgressCallback | None = None,
+):
     """Process Twitter/X video via fxtwitter API."""
     print(f"Processing Twitter link: {url}")
     tweet_id = url.split("/")[-1]
 
     try:
+        await _report_progress(progress, "downloading")
         async with aiohttp.ClientSession() as session:
             async with session.get(
                 f"https://api.fxtwitter.com/status/{tweet_id}",
@@ -223,21 +248,31 @@ async def process_twitter(url: str, start_time: int = 0):
                     return {"timestamp": None, "track": None}
 
                 print(f"Found Twitter video URL: {video_url}")
-                return await process_direct_video(video_url, start_time)
+                return await process_direct_video(
+                    video_url, start_time, progress=progress
+                )
 
     except Exception as e:
         print(f"Error processing Twitter link: {e}")
         return {"timestamp": None, "track": None}
 
 
-async def process_ytdl(url: str, start_time: int = 0):
+async def process_ytdl(
+    url: str,
+    start_time: int = 0,
+    *,
+    progress: MatchProgressCallback | None = None,
+):
     """Process URL via yt-dlp."""
     print(f"Processing with yt-dlp: {url}" + (f" (from {start_time}s)" if start_time else ""))
 
     try:
         with tempfile.TemporaryDirectory() as tmpdir:
             ytdl = _make_ytdl(tmpdir)
-            info = ytdl.extract_info(url, download=True)
+            await _report_progress(progress, "downloading")
+            info = await asyncio.to_thread(
+                lambda: ytdl.extract_info(url, download=True)
+            )
 
             if not info:
                 return {"timestamp": None, "track": None}
@@ -250,6 +285,7 @@ async def process_ytdl(url: str, start_time: int = 0):
                     print(f"Downloaded to: {filepath}")
 
                     if start_time > 0:
+                        await _report_progress(progress, "converting")
                         proc = await asyncio.create_subprocess_exec(
                             "ffmpeg",
                             "-ss", str(start_time),
@@ -273,6 +309,7 @@ async def process_ytdl(url: str, start_time: int = 0):
                         with open(filepath, "rb") as f:
                             audio_data = f.read()
 
+                    await _report_progress(progress, "matching")
                     return _normalize_shazam_result(await shazam.recognize(audio_data))
 
         return {"timestamp": None, "track": None}
@@ -283,12 +320,17 @@ async def process_ytdl(url: str, start_time: int = 0):
         return {"timestamp": None, "track": None}
 
 
-async def process_media(url: str, start_time: int = 0):
+async def process_media(
+    url: str,
+    start_time: int = 0,
+    *,
+    progress: MatchProgressCallback | None = None,
+):
     """Route media processing based on URL type."""
     if TWITTER_LINK_REGEX.match(url):
-        return await process_twitter(url, start_time)
+        return await process_twitter(url, start_time, progress=progress)
 
     if should_direct_download(url):
-        return await process_direct_video(url, start_time)
+        return await process_direct_video(url, start_time, progress=progress)
 
-    return await process_ytdl(url, start_time)
+    return await process_ytdl(url, start_time, progress=progress)
