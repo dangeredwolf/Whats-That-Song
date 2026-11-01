@@ -7,7 +7,7 @@ A Discord bot that identifies songs from videos, audio files, and URLs using Sha
 
 ### Prerequisites
 
-- Python 3.10 or later
+- Python 3.11 or later
 - FFmpeg installed and in your PATH
 - Discord bot token from [Discord Developer Portal](https://discord.com/developers/applications)
 - Spotify API credentials from [Spotify Developer Dashboard](https://developer.spotify.com/dashboard) (optional but recommended)
